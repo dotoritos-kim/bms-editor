@@ -169,8 +169,7 @@ export function detectKeyMode(notes: BMSNote[], headers?: { get: (key: string) =
     // 48K: keyboard DP (24 keys each side)
     if (maxNumericColumn >= 24) return '48K';
 
-    // 24K: keyboard DP (12 keys each side, columns 1-12 on each side)
-    // IIDX DP에서 컬럼 13, 14는 2P의 6, 7키이므로 제외
+    // 24K: keyboard DP (columns up to 24, 12 per side)
     if (maxNumericColumn >= 18) return '24K';
 
     // 18K: keyboard DP (9 keys each side, no scratch)

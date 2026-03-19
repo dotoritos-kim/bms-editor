@@ -19,7 +19,9 @@
   "scripts": {
     "build": "vite build && tsc --emitDeclarationOnly --outDir dist",
     "type-check": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "peerDependencies": {
     "@react-three/drei": ">=9.0.0",
@@ -46,6 +48,7 @@
     "three": "^0.170.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
+    "vitest": "^4.1.0",
     "zustand": "^5.0.2"
   },
   "keywords": [
