@@ -3842,9 +3842,9 @@ export function NoteChartViewer({
   const canvasWidth = chartWidth + LEFT_MARGIN_FOR_TEXT;
   const mainCanvasStyle = useMemo(() => ({
     background: '#1a1a2e',
-    width: canvasWidth,
+    width: '100%' as const,
+    minWidth: canvasWidth,
     height: '100%' as const,
-    margin: '0 auto',
   }), [canvasWidth]);
 
   // Memoize columns Canvas style to prevent recreation
@@ -3877,8 +3877,8 @@ export function NoteChartViewer({
     <div
       ref={outerContainerRef}
       className={cn(
-        'rounded-xl border bg-card overflow-hidden',
-        isFullscreen && 'fixed inset-0 z-50 rounded-none border-none flex flex-col',
+        'rounded-xl border bg-card overflow-hidden flex flex-col h-full',
+        isFullscreen && 'fixed inset-0 z-50 rounded-none border-none',
         className
       )}
     >
@@ -4429,8 +4429,8 @@ export function NoteChartViewer({
         <div
           ref={containerRef}
           tabIndex={0}
-          className={cn("relative select-none outline-none focus:ring-2 focus:ring-primary/50 isolate z-0 overflow-x-auto pb-6", viewMode === 'scroll' && "cursor-grab active:cursor-grabbing", isFullscreen && "flex-1")}
-          style={{ height: isFullscreen ? '100%' : effectiveHeight, touchAction: viewMode === 'scroll' ? 'none' : 'auto' }}
+          className={cn("relative select-none outline-none focus:ring-2 focus:ring-primary/50 isolate z-0 overflow-x-auto pb-6", viewMode === 'scroll' && "cursor-grab active:cursor-grabbing", (isFullscreen) && "flex-1")}
+          style={{ height: isFullscreen ? '100%' : effectiveHeight, minHeight: effectiveHeight, flex: '1 1 auto', touchAction: viewMode === 'scroll' ? 'none' : 'auto' }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
