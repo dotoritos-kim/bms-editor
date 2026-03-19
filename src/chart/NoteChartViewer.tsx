@@ -2755,10 +2755,10 @@ export function NoteChartViewer({
     return Math.ceil(max) + 4;
   }, [notes, totalBeats]);
 
-  // chartWidth: if override is set, use it directly; otherwise use baseChartWidth
+  // chartWidth: if override is set, use it directly; otherwise use scaled baseChartWidth
   const chartWidth = useMemo(() =>
-    chartWidthOverride !== null ? chartWidthOverride : baseChartWidth,
-    [chartWidthOverride, baseChartWidth]
+    chartWidthOverride !== null ? chartWidthOverride : baseChartWidth * widthScale,
+    [chartWidthOverride, baseChartWidth, widthScale]
   );
   const effectiveBeatScale = useMemo(() => beatScale * zoomLevel * hiSpeed, [beatScale, zoomLevel, hiSpeed]);
 
