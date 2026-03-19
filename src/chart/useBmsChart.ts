@@ -144,9 +144,9 @@ export function detectKeyMode(notes: BMSNote[], headers?: { get: (key: string) =
   const hasIIDXSpecialLanes = hasScratch || hasScratch2 || hasFZ || hasFZ2;
 
   // 2P side columns for DP detection
-  // For IIDX DP: columns 8-14, SC2, FZ2
-  // For Keyboard DP: columns 10-18
-  const iidxDP2PColumns = ['8', '9', '10', '11', '12', '13', '14', 'SC2', 'FZ2'];
+  // For IIDX DP: columns 10-14, SC2, FZ2 (columns 8-9 are ambiguous — could be 8K/9K SP)
+  // For Keyboard DP: columns 10+
+  const iidxDP2PColumns = ['10', '11', '12', '13', '14', 'SC2', 'FZ2'];
   const hasIIDX2P = iidxDP2PColumns.some(col => usedColumns.has(col));
   const hasKeyboard2P = maxNumericColumn >= 10;  // Keyboard DP uses columns 10+
 
