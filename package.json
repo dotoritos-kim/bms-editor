@@ -1,0 +1,59 @@
+{
+  "name": "@rhythm-archive/bms-editor",
+  "version": "0.1.0",
+  "description": "BMS chart editor and visualization - supports 5K to 48K+4SC editing with undo/redo",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build && tsc --emitDeclarationOnly --outDir dist",
+    "type-check": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@react-three/drei": ">=9.0.0",
+    "@react-three/fiber": ">=8.0.0",
+    "@rhythm-archive/bms-core": ">=0.1.0",
+    "@rhythm-archive/bms-player": ">=0.1.0",
+    "lucide-react": ">=0.300.0",
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0",
+    "three": ">=0.150.0",
+    "zustand": ">=4.0.0"
+  },
+  "devDependencies": {
+    "@react-three/drei": "^9.0.0",
+    "@react-three/fiber": "^9.5.0",
+    "@rhythm-archive/bms-core": "file:../bms-core",
+    "@rhythm-archive/bms-player": "file:../bms-player",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.170.0",
+    "lucide-react": "^0.460.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "three": "^0.170.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "zustand": "^5.0.2"
+  },
+  "keywords": [
+    "bms",
+    "chart-editor",
+    "rhythm-game",
+    "note-editor",
+    "iidx"
+  ],
+  "license": "MIT"
+}
