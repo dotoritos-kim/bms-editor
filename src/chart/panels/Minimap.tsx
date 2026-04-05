@@ -2,31 +2,44 @@
  * Minimap
  *
  * 에디터 미니맵 컴포넌트
- * 2D Canvas 기반 노트 밀도 시각화, 클릭으로 이동
+ * 2D Canvas 기반 — 레인 기반 노트 배치, 뷰포트 인디케이터, 드래그 스크롤
  */
 
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { cn } from '../../utils';
 import type { EditableBMSNote } from '@rhythm-archive/bms-core';
 
-interface MinimapProps {
-  /** 노트 배열 */
-  notes: EditableBMSNote[];
-  /** 총 비트 수 */
-  totalBeats: number;
-  /** 현재 스크롤 비트 */
-  currentBeat: number;
-  /** 현재 뷰포트 높이 (비트 단위) */
-  viewportBeats: number;
-  /** 비트 위치로 이동 콜백 */
-  onNavigate: (beat: number) => void;
-  /** 추가 클래스명 */
-  className?: string;
+// 레인 색상 (column id → color). 에디터 laneConfig와 동일한 팔레트.
+const LANE_COLORS: Record<string, string> = {
+  SC: '#ff3366',
+  '1': '#ffffff',
+  '2': '#5599ff',
+  '3': '#ffffff',
+  '4': '#5599ff',
+  '5': '#ffffff',
+  '6': '#5599ff',
+  '7': '#ffffff',
+  '8': '#ff6b6b',
+  '9': '#e056fd',
+  FZ: '#888888',
+};
+const DEFAULT_NOTE_COLOR = '#88aaff';
+
+interface MinimapNote {
+  beat: number;
+  endBeat?: number;
+  column?: string;
+  noteType?: string;
 }
 
-const MINIMAP_WIDTH = 60;
-const MINIMAP_MAX_HEIGHT = 200;
-const NOTE_DOT_SIZE = 2;
+interface MinimapProps {
+  notes: MinimapNote[];
+  totalBeats: number;
+  currentBeat: number;
+  viewportBeats: number;
+  onNavigate: (beat: number) => void;
+  className?: string;
+}
 
 export const Minimap = React.memo(function Minimap({
   notes,
@@ -38,106 +51,221 @@ export const Minimap = React.memo(function Minimap({
 }: MinimapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [canvasHeight, setCanvasHeight] = useState(MINIMAP_MAX_HEIGHT);
+  const [size, setSize] = useState({ w: 120, h: 192 });
+  const isDraggingRef = useRef(false);
 
-  // 컨테이너 크기에 맞춰 캔버스 높이 조절
+  // Build sorted unique lane list from notes (stable order: SC first, numbers, FZ last)
+  const laneOrder = useMemo(() => {
+    const cols = new Set<string>();
+    for (const n of notes) if (n.column) cols.add(n.column);
+    const arr = Array.from(cols);
+    const order = (c: string) => {
+      if (c === 'SC') return -1;
+      if (c === 'FZ') return 100;
+      const num = parseInt(c);
+      return isNaN(num) ? 50 : num;
+    };
+    arr.sort((a, b) => order(a) - order(b));
+    return arr;
+  }, [notes]);
+
+  // column → normalized x [0..1]
+  const colPosMap = useMemo(() => {
+    const map = new Map<string, number>();
+    const count = laneOrder.length;
+    if (count === 0) return map;
+    laneOrder.forEach((col, i) => {
+      map.set(col, (i + 0.5) / count);
+    });
+    return map;
+  }, [laneOrder]);
+
+  // Observe container size
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        const availableHeight = entry.contentRect.height;
-        setCanvasHeight(Math.min(availableHeight, MINIMAP_MAX_HEIGHT));
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          setSize({ w: Math.floor(width), h: Math.floor(height) });
+        }
       }
     });
     observer.observe(container);
     return () => observer.disconnect();
   }, []);
 
-  // 미니맵 그리기
+  // Render minimap
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const cw = size.w;
+    const ch = size.h;
+    canvas.width = cw * dpr;
+    canvas.height = ch * dpr;
+    canvas.style.width = `${cw}px`;
+    canvas.style.height = `${ch}px`;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    const height = canvas.height;
-    const width = canvas.width;
-    const scale = height / Math.max(totalBeats, 1);
+    const safeTotalBeats = Math.max(totalBeats, 1);
+    const scale = ch / safeTotalBeats;
+    const laneCount = laneOrder.length || 1;
+    const laneW = Math.max((cw - 4) / laneCount, 2); // 2px side padding
+    const padX = 2;
 
-    // 배경
-    ctx.fillStyle = '#0d0d1a';
-    ctx.fillRect(0, 0, width, height);
+    // Background
+    ctx.fillStyle = '#0c0c18';
+    ctx.fillRect(0, 0, cw, ch);
 
-    // 마디선
-    ctx.strokeStyle = '#222244';
+    // Lane backgrounds (subtle alternating)
+    for (let i = 0; i < laneOrder.length; i++) {
+      const x = padX + i * laneW;
+      ctx.fillStyle = i % 2 === 0 ? '#10101e' : '#141428';
+      ctx.fillRect(x, 0, laneW, ch);
+    }
+
+    // Measure lines (every 4 beats)
+    ctx.strokeStyle = '#2a2a44';
     ctx.lineWidth = 0.5;
-    for (let beat = 0; beat <= totalBeats; beat += 4) {
-      const y = height - beat * scale;
+    for (let beat = 0; beat <= safeTotalBeats; beat += 4) {
+      const y = ch - beat * scale;
       ctx.beginPath();
       ctx.moveTo(0, y);
-      ctx.lineTo(width, y);
+      ctx.lineTo(cw, y);
       ctx.stroke();
     }
 
-    // 노트 점
-    for (const note of notes) {
-      const y = height - note.beat * scale;
-      const x = width * 0.2 + Math.random() * width * 0.6; // 간단한 분포
+    // Notes — use thin lines when density is high to avoid solid color blocks
+    const noteH = Math.max(scale * 0.12, 1); // min 1px height
+    // Compute density: if average pixel gap between notes is tiny, lower opacity
+    const avgPixelPerNote = (ch * laneCount) / Math.max(notes.length, 1);
+    const denseAlpha = avgPixelPerNote < 3 ? 0.55 : avgPixelPerNote < 6 ? 0.7 : 0.9;
 
+    for (const note of notes) {
+      if (!note.column) continue;
+      const pos = colPosMap.get(note.column);
+      if (pos === undefined) continue;
+
+      const laneIdx = laneOrder.indexOf(note.column);
+      const x = padX + laneIdx * laneW + 1.5;
+      const w = laneW - 3;
+      const y = ch - note.beat * scale - noteH;
+
+      // Color by type
+      let color: string;
       switch (note.noteType) {
         case 'landmine':
-          ctx.fillStyle = '#ff4444';
+          color = '#ff4444';
           break;
         case 'invisible':
-          ctx.fillStyle = '#666666';
+          color = '#555566';
+          break;
+        case 'bgm':
+          color = '#444455';
           break;
         default:
-          ctx.fillStyle = '#6688ff';
+          color = LANE_COLORS[note.column!] || DEFAULT_NOTE_COLOR;
       }
 
-      ctx.fillRect(x - NOTE_DOT_SIZE / 2, y - NOTE_DOT_SIZE / 2, NOTE_DOT_SIZE, NOTE_DOT_SIZE);
+      // Long note body
+      if (note.endBeat !== undefined && note.endBeat > note.beat) {
+        const endY = ch - note.endBeat * scale;
+        ctx.fillStyle = color;
+        ctx.globalAlpha = 0.25;
+        ctx.fillRect(x, endY, w, y + noteH - endY);
+        ctx.globalAlpha = 1;
+      }
+
+      // Note head
+      ctx.fillStyle = color;
+      ctx.globalAlpha = denseAlpha;
+      ctx.fillRect(x, y, w, noteH);
+      ctx.globalAlpha = 1;
     }
 
-    // 현재 뷰포트 (반투명 사각형)
-    const vpY = height - (currentBeat + viewportBeats) * scale;
-    const vpH = viewportBeats * scale;
-    ctx.fillStyle = 'rgba(100, 150, 255, 0.15)';
-    ctx.fillRect(0, vpY, width, vpH);
-    ctx.strokeStyle = 'rgba(100, 150, 255, 0.5)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(0, vpY, width, vpH);
-  }, [notes, totalBeats, currentBeat, viewportBeats, canvasHeight]);
+    // Dimming outside viewport (darken everything except the current viewport range)
+    const vpTop = ch - (currentBeat + viewportBeats) * scale;
+    const vpBottom = ch - currentBeat * scale;
+    const vpH = vpBottom - vpTop;
 
-  // 클릭으로 이동
-  const handleClick = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
+    // Dim above viewport
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    if (vpTop > 0) ctx.fillRect(0, 0, cw, vpTop);
+    // Dim below viewport
+    if (vpBottom < ch) ctx.fillRect(0, vpBottom, cw, ch - vpBottom);
+
+    // Viewport border
+    ctx.strokeStyle = '#6699ff';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(0.5, vpTop + 0.5, cw - 1, Math.max(vpH - 1, 2));
+
+    // Bright top/bottom lines for viewport
+    ctx.strokeStyle = '#88bbff';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, vpTop);
+    ctx.lineTo(cw, vpTop);
+    ctx.moveTo(0, vpBottom);
+    ctx.lineTo(cw, vpBottom);
+    ctx.stroke();
+  }, [notes, totalBeats, currentBeat, viewportBeats, size, laneOrder, colPosMap]);
+
+  // Click/drag to navigate (clamp to valid scroll range to prevent feedback oscillation)
+  const navigateFromEvent = useCallback(
+    (clientY: number) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
-
       const rect = canvas.getBoundingClientRect();
-      const y = e.clientY - rect.top;
-      const scale = canvas.height / Math.max(totalBeats, 1);
-      const beat = (canvas.height - y) / scale;
-
-      onNavigate(Math.max(0, Math.min(totalBeats, beat)));
+      const y = clientY - rect.top;
+      const scale = size.h / Math.max(totalBeats, 1);
+      const beat = (size.h - y) / scale - viewportBeats / 2;
+      // Clamp to exact valid range (same as EditorCanvas maxScroll)
+      const maxScroll = Math.max(0, totalBeats - viewportBeats + 4);
+      onNavigate(Math.max(0, Math.min(maxScroll, beat)));
     },
-    [totalBeats, onNavigate]
+    [totalBeats, viewportBeats, onNavigate, size.h],
   );
 
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      isDraggingRef.current = true;
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      navigateFromEvent(e.clientY);
+    },
+    [navigateFromEvent],
+  );
+
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (!isDraggingRef.current) return;
+      navigateFromEvent(e.clientY);
+    },
+    [navigateFromEvent],
+  );
+
+  const handlePointerUp = useCallback(() => {
+    isDraggingRef.current = false;
+  }, []);
+
   return (
-    <div className={cn('flex flex-col', className)}>
-      <div className="px-2 py-1 text-xs font-semibold border-b shrink-0">미니맵</div>
+    <div className={cn('flex flex-col h-full', className)}>
+      <div className="px-2 py-1 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider border-b border-zinc-800 shrink-0">
+        Minimap
+      </div>
       <div ref={containerRef} className="flex-1 min-h-0 overflow-hidden">
         <canvas
           ref={canvasRef}
-          width={MINIMAP_WIDTH}
-          height={canvasHeight}
-          className="cursor-pointer block"
-          onClick={handleClick}
-          title="클릭하여 이동"
+          className="cursor-pointer block w-full h-full"
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerLeave={handlePointerUp}
+          title="클릭/드래그하여 이동"
         />
       </div>
     </div>

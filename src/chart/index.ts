@@ -22,9 +22,9 @@ export type {
 export { BmsChartDiff } from './BmsChartDiff';
 export type { BmsChartDiffProps, ChartInfo as BmsChartDiffInfo } from './BmsChartDiff';
 
-// Keysound Player
-export { KeysoundPlayer, createKeysoundPlayer } from './KeysoundPlayer';
-export type { KeysoundPlayerOptions } from './KeysoundPlayer';
+// Keysound Player (re-exported from @rhythm-archive/bms-player)
+export { KeysoundPlayer, createKeysoundPlayer } from '@rhythm-archive/bms-player';
+export type { KeysoundPlayerOptions, KeysoundPlayerResolveConfig } from '@rhythm-archive/bms-player';
 
 // Lane Config
 export { generateLaneConfig, getLaneIds } from './laneConfig';

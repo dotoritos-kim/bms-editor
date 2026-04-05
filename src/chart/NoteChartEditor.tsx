@@ -16,7 +16,7 @@
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { Canvas, useThree, useFrame, ThreeEvent } from '@react-three/fiber';
-import { Text, Line } from '@react-three/drei';
+import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 import {
   MousePointer2,
@@ -126,12 +126,16 @@ export interface NoteChartEditorProps {
   onKeysoundAssign?: (noteId: string, keysoundId: string) => void;
   /** 키음 드래그 앤 드롭으로 노트 추가 (beat, column이 자동 계산됨) */
   onDropKeysound?: (keysoundId: string, beat: number, column: string) => void;
+  /** 노트 위에 호버 시 콜백 (keysound ID, null이면 호버 해제) */
+  onNoteHover?: (keysoundId: string | null) => void;
 
   // 네비게이션
   /** 외부에서 스크롤 위치 설정 (미니맵 등) */
   scrollToBeat?: number;
   /** 스크롤 위치 변경 콜백 */
   onScrollChange?: (beat: number) => void;
+  /** Imperative scroll ref for smooth playback (read every frame in useFrame, bypasses React re-renders) */
+  scrollBeatImperativeRef?: React.RefObject<number>;
 
   // 상태 표시
   /** 저장되지 않은 변경 있음 */
@@ -156,23 +160,37 @@ function snapBeatToGrid(beat: number, gridSnap: GridSnap): number {
   return Math.round(beat / gridStep) * gridStep;
 }
 
-// 노트 색상을 hex number로 변환
+// 레인 색상 캐시 (new THREE.Color() 호출을 useFrame 밖으로 이동)
+const _laneColorCache = new Map<string, { normal: number; invisible: number }>();
+function getLaneColorHex(laneColor: string): { normal: number; invisible: number } {
+  let cached = _laneColorCache.get(laneColor);
+  if (!cached) {
+    const c = new THREE.Color(laneColor);
+    const normal = c.getHex();
+    const invisible = c.clone().multiplyScalar(0.4).getHex();
+    cached = { normal, invisible };
+    _laneColorCache.set(laneColor, cached);
+  }
+  return cached;
+}
+
+// 노트 색상을 hex number로 변환 (캐시 사용, GC 압력 제거)
 function getNoteColorHex(
   note: EditableBMSNote,
-  laneColor: string,
+  laneColorHex: { normal: number; invisible: number },
   isSelected: boolean
 ): number {
   if (isSelected) return 0x00ffff;
 
   switch (note.noteType) {
     case 'invisible':
-      return new THREE.Color(laneColor).multiplyScalar(0.4).getHex();
+      return laneColorHex.invisible;
     case 'landmine':
       return 0xff4444;
     case 'bgm':
       return 0x666666;
     default:
-      return new THREE.Color(laneColor).getHex();
+      return laneColorHex.normal;
   }
 }
 
@@ -207,11 +225,14 @@ function EditorCanvas({
   onStopEditRequest,
   onKeysoundAssign,
   onDropKeysound: _onDropKeysound,
+  onNoteHover,
   scrollToBeat: externalScrollBeat,
   onScrollChange,
   coordConverterRef,
+  scrollBeatImperativeRef,
 }: Omit<NoteChartEditorProps, 'height' | 'className' | 'hasUnsavedChanges' | 'branchName'> & {
   coordConverterRef?: React.MutableRefObject<CoordConverter | null>;
+  scrollBeatImperativeRef?: React.RefObject<number>;
 }) {
   const { camera, gl, size } = useThree();
   const [scrollBeat, setScrollBeat] = useState(0);
@@ -265,16 +286,23 @@ function EditorCanvas({
 
   // 외부 스크롤 동기화 (미니맵 클릭 등)
   const prevExternalScrollRef = useRef(externalScrollBeat);
+  const isExternalUpdateRef = useRef(false);
   useEffect(() => {
     if (externalScrollBeat !== undefined && externalScrollBeat !== prevExternalScrollRef.current) {
       prevExternalScrollRef.current = externalScrollBeat;
       const maxScroll = Math.max(0, totalBeats - viewportBeatsRef.current + 4);
-      setScrollBeat(Math.max(0, Math.min(maxScroll, externalScrollBeat)));
+      const clamped = Math.max(0, Math.min(maxScroll, externalScrollBeat));
+      isExternalUpdateRef.current = true;
+      setScrollBeat(clamped);
     }
   }, [externalScrollBeat, totalBeats]);
 
-  // 스크롤 변경 보고
+  // 스크롤 변경 보고 (skip reporting back external scroll changes to prevent oscillation)
   useEffect(() => {
+    if (isExternalUpdateRef.current) {
+      isExternalUpdateRef.current = false;
+      return;
+    }
     onScrollChange?.(scrollBeat);
   }, [scrollBeat, onScrollChange]);
 
@@ -352,23 +380,27 @@ function EditorCanvas({
     const viewportHeight = size.height / zoom;
     viewportBeatsRef.current = viewportHeight / beatScaleRef.current;
 
-    const targetY = scrollBeatRef.current * beatScaleRef.current + viewportHeight / 2;
+    // Use imperative ref for smooth camera tracking (updated every frame during playback)
+    const effectiveScrollBeat = scrollBeatImperativeRef?.current ?? scrollBeatRef.current;
+
+    const targetY = effectiveScrollBeat * beatScaleRef.current + viewportHeight / 2;
     camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.15);
   });
 
-  // 스크린 좌표를 월드 좌표로 변환
+  // 스크린 좌표를 월드 좌표로 변환 (reuse vector to avoid GC)
+  const _screenVec = useMemo(() => new THREE.Vector3(), []);
   const screenToWorld = useCallback(
     (screenX: number, screenY: number) => {
       const rect = gl.domElement.getBoundingClientRect();
       const x = ((screenX - rect.left) / rect.width) * 2 - 1;
       const y = -((screenY - rect.top) / rect.height) * 2 + 1;
 
-      const vector = new THREE.Vector3(x, y, 0);
-      vector.unproject(camera);
+      _screenVec.set(x, y, 0);
+      _screenVec.unproject(camera);
 
-      return { x: vector.x, y: vector.y };
+      return { x: _screenVec.x, y: _screenVec.y };
     },
-    [camera, gl.domElement]
+    [camera, gl.domElement, _screenVec]
   );
 
   // 월드 좌표에서 레인과 비트 찾기
@@ -411,23 +443,40 @@ function EditorCanvas({
     };
   }, [coordConverterRef, screenToWorld, worldToLaneBeat]);
 
-  // 클릭된 노트 찾기
+  // 월드 좌표에서 레인만 찾기 (그리드 스냅 없이 raw beat 반환)
+  const worldToLaneRawBeat = useCallback(
+    (worldX: number, worldY: number) => {
+      const relativeX = worldX - offsetX;
+      let column: string | null = null;
+      for (const lane of lanes) {
+        if (relativeX >= lane.x && relativeX < lane.x + lane.width) {
+          column = lane.id;
+          break;
+        }
+      }
+      const rawBeat = worldY / beatScale;
+      return { column, rawBeat };
+    },
+    [lanes, offsetX, beatScale]
+  );
+
+  // 클릭된 노트 찾기 (raw beat로 검색 — 오프 그리드 노트도 정확히 감지)
   const findNoteAtPosition = useCallback(
     (worldX: number, worldY: number): EditableBMSNote | null => {
-      const { column, beat } = worldToLaneBeat(worldX, worldY);
+      const { column, rawBeat } = worldToLaneRawBeat(worldX, worldY);
       if (!column) return null;
 
-      // 클릭 위치 근처의 노트 찾기
-      const clickTolerance = 2 / beatScale; // 2 픽셀 허용 오차
+      // 클릭 위치 근처의 노트 찾기 (raw beat 기반)
+      const clickTolerance = 4 / beatScale; // 4 픽셀 허용 오차
       return (
         notes.find(
           (note) =>
             note.column === column &&
-            Math.abs(note.beat - beat) < clickTolerance
+            Math.abs(note.beat - rawBeat) < clickTolerance
         ) || null
       );
     },
-    [notes, worldToLaneBeat, beatScale]
+    [notes, worldToLaneRawBeat, beatScale]
   );
 
   // 롱노트 endBeat 위치 클릭 감지
@@ -463,6 +512,12 @@ function EditorCanvas({
         setHoverPosition(null);
       }
 
+      // Note hover preview
+      if (onNoteHover) {
+        const hoveredNote = findNoteAtPosition(world.x, world.y);
+        onNoteHover(hoveredNote?.keysound && hoveredNote.keysound !== '00' ? hoveredNote.keysound : null);
+      }
+
       // Rubber band selection (drag in select mode on empty space)
       if (rubberBand) {
         setRubberBand((prev) => prev ? { ...prev, endX: world.x, endY: world.y } : null);
@@ -496,17 +551,21 @@ function EditorCanvas({
         setDragDelta({ beatDelta, columnDelta });
       }
     },
-    [screenToWorld, worldToLaneBeat, isDragging, dragStart, rubberBand, activeTool, lanes, offsetX, resizing, notes, beatScale, gridSnap]
+    [screenToWorld, worldToLaneBeat, isDragging, dragStart, rubberBand, activeTool, lanes, offsetX, resizing, notes, beatScale, gridSnap, onNoteHover, findNoteAtPosition]
   );
 
   // 클릭 핸들러
   const handlePointerDown = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
       e.stopPropagation();
+      pointerUpProcessedRef.current = false;
       const world = screenToWorld(e.nativeEvent.clientX, e.nativeEvent.clientY);
       const { column, beat } = worldToLaneBeat(world.x, world.y);
 
       if (!column || beat < 0) return;
+
+      // Skip editor actions on right-click (context menu will handle it)
+      if (e.nativeEvent.button === 2) return;
 
       switch (activeTool) {
         case 'select': {
@@ -515,7 +574,6 @@ function EditorCanvas({
           if (longNoteEnd && longNoteEnd.endBeat !== undefined) {
             setResizing({ noteId: longNoteEnd.id, startEndBeat: longNoteEnd.endBeat });
             setDragStart({ x: world.x, y: world.y });
-            pointerUpProcessedRef.current = false;
             onNoteSelect([longNoteEnd.id]);
             break;
           }
@@ -570,7 +628,6 @@ function EditorCanvas({
             }
             setIsDragging(true);
             setDragStart({ x: world.x, y: world.y });
-            pointerUpProcessedRef.current = false;
           }
           break;
         }
@@ -584,17 +641,18 @@ function EditorCanvas({
         }
 
         case 'bpm': {
-          // 기존 BPM 마커 근처 클릭 시 편집 모드
-          const clickTolerance = 0.1; // 비트 기준 허용 범위
+          // 기존 BPM 마커 근처 클릭 시 편집 모드 (raw beat로 검색하여 오프 그리드 마커도 감지)
+          const rawBeat = world.y / beatScale;
+          const clickTolerance = 4 / beatScale; // 4px tolerance in beats
           const existingBpm = bpmChanges?.find((c) => {
             const markerBeat = c.measure * 4 + c.fraction * 4;
-            return Math.abs(markerBeat - beat) < clickTolerance;
+            return Math.abs(markerBeat - rawBeat) < clickTolerance;
           });
 
           if (existingBpm && onBpmEditRequest) {
             onBpmEditRequest(existingBpm);
           } else if (onBpmRequest) {
-            onBpmRequest(beat);
+            onBpmRequest(beat); // Use grid-snapped beat for new markers
           } else if (onBpmChange) {
             onBpmChange(beat, baseBpm || 120);
           }
@@ -602,11 +660,12 @@ function EditorCanvas({
         }
 
         case 'stop': {
-          // 기존 STOP 마커 근처 클릭 시 편집 모드
-          const stopClickTolerance = 0.1;
+          // 기존 STOP 마커 근처 클릭 시 편집 모드 (raw beat)
+          const rawBeat = world.y / beatScale;
+          const stopClickTolerance = 4 / beatScale;
           const existingStop = stopEvents?.find((s) => {
             const markerBeat = s.measure * 4 + s.fraction * 4;
-            return Math.abs(markerBeat - beat) < stopClickTolerance;
+            return Math.abs(markerBeat - rawBeat) < stopClickTolerance;
           });
 
           if (existingStop && onStopEditRequest) {
@@ -628,6 +687,7 @@ function EditorCanvas({
       selectedNoteType,
       currentKeysound,
       baseBpm,
+      beatScale,
       onNoteAdd,
       onNoteDelete,
       onNoteSelect,
@@ -678,14 +738,18 @@ function EditorCanvas({
       // 롱노트 리사이즈 완료
       if (resizing && onNoteUpdate) {
         const world = screenToWorld(e.nativeEvent.clientX, e.nativeEvent.clientY);
-        const rawBeat = world.y / beatScale;
-        const snappedBeat = snapBeatToGrid(rawBeat, gridSnap);
-        const note = notes.find((n) => n.id === resizing.noteId);
-        if (note) {
-          const minEnd = note.beat + (1 / gridSnap);
-          const newEndBeat = Math.max(snappedBeat, minEnd);
-          if (Math.abs(newEndBeat - resizing.startEndBeat) > 0.001) {
-            onNoteUpdate(resizing.noteId, { endBeat: newEndBeat });
+        // Only apply resize if actually dragged (minimum pixel threshold to avoid accidental snaps)
+        const dragPixelDist = dragStart ? Math.abs(world.y - dragStart.y) : 0;
+        if (dragPixelDist > 3) {
+          const rawBeat = world.y / beatScale;
+          const snappedBeat = snapBeatToGrid(rawBeat, gridSnap);
+          const note = notes.find((n) => n.id === resizing.noteId);
+          if (note) {
+            const minEnd = note.beat + (1 / gridSnap);
+            const newEndBeat = Math.max(snappedBeat, minEnd);
+            if (Math.abs(newEndBeat - resizing.startEndBeat) > 0.001) {
+              onNoteUpdate(resizing.noteId, { endBeat: newEndBeat });
+            }
           }
         }
         setResizing(null);
@@ -839,6 +903,8 @@ function EditorCanvas({
           bpmChanges={bpmChanges}
           beatScale={beatScale}
           totalWidth={totalWidth}
+          scrollBeat={scrollBeat}
+          viewportBeats={size.height / beatScale}
         />
       )}
 
@@ -848,13 +914,24 @@ function EditorCanvas({
           stopEvents={stopEvents}
           beatScale={beatScale}
           totalWidth={totalWidth}
+          scrollBeat={scrollBeat}
+          viewportBeats={size.height / beatScale}
+        />
+      )}
+
+      {/* 판정선 (재생 중일 때만 표시) */}
+      {scrollBeatImperativeRef && (
+        <EditorJudgmentLine
+          scrollBeatImperativeRef={scrollBeatImperativeRef}
+          beatScale={beatScale}
+          totalWidth={totalWidth}
         />
       )}
     </group>
   );
 }
 
-/** 레인 배경 렌더러 */
+/** 레인 배경 렌더러 (batched dividers → single LineSegments) */
 const LanesRenderer = React.memo(function LanesRenderer({
   lanes,
   totalHeight,
@@ -864,12 +941,26 @@ const LanesRenderer = React.memo(function LanesRenderer({
 }) {
   const totalWidth = lanes.reduce((sum, lane) => sum + lane.width, 0);
   const offsetX = -totalWidth / 2;
+  const dividerGeomRef = useRef<THREE.BufferGeometry>(null);
 
   // 레인별 배경색 캐싱
   const laneBackgrounds = useMemo(
     () => lanes.map((lane) => getLaneBackground(lane)),
     [lanes]
   );
+
+  // 레인 구분선을 단일 LineSegments geometry로 batch
+  useEffect(() => {
+    const geometry = dividerGeomRef.current;
+    if (!geometry) return;
+    const positions: number[] = [];
+    for (const lane of lanes) {
+      const x = offsetX + lane.x + lane.width;
+      positions.push(x, 0, -4, x, totalHeight, -4);
+    }
+    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+    geometry.computeBoundingSphere();
+  }, [lanes, totalHeight, offsetX]);
 
   return (
     <group>
@@ -886,17 +977,11 @@ const LanesRenderer = React.memo(function LanesRenderer({
           <meshBasicMaterial color={laneBackgrounds[i]} />
         </mesh>
       ))}
-      {/* 레인 구분선 */}
-      {lanes.map((lane) => (
-        <Line
-          key={`divider-${lane.id}`}
-          points={[
-            [offsetX + lane.x + lane.width, 0, -4],
-            [offsetX + lane.x + lane.width, totalHeight, -4],
-          ]}
-          color="#333366"
-        />
-      ))}
+      {/* 레인 구분선 (single draw call) */}
+      <lineSegments frustumCulled={false}>
+        <bufferGeometry ref={dividerGeomRef} />
+        <lineBasicMaterial color="#333366" />
+      </lineSegments>
     </group>
   );
 });
@@ -906,7 +991,7 @@ const MEASURE_LINE_COLOR = new THREE.Color('#6666aa');
 const BEAT_LINE_COLOR = new THREE.Color('#444466');
 const GRID_LINE_COLOR = new THREE.Color('#2a2a44');
 
-/** 마디선 렌더러 (batched LineSegments + viewport culling) */
+/** 마디선 렌더러 (batched LineSegments + viewport culling with large buffer to avoid frequent rebuilds) */
 const MeasureLinesRenderer = React.memo(function MeasureLinesRenderer({
   totalBeats,
   beatScale,
@@ -925,14 +1010,32 @@ const MeasureLinesRenderer = React.memo(function MeasureLinesRenderer({
   const lineSegmentsRef = useRef<THREE.LineSegments>(null);
   const geometryRef = useRef<THREE.BufferGeometry>(null);
 
-  // viewport culling: ±buffer 범위만 렌더링
-  const buffer = viewportBeats * 0.3;
-  const minBeat = Math.max(0, scrollBeat - buffer);
-  const maxBeat = Math.min(totalBeats, scrollBeat + viewportBeats + buffer);
+  // Large buffer: rebuild only when scroll goes outside the pre-computed range
+  // This avoids geometry rebuild on every scroll change during playback
+  const BUFFER_MULTIPLIER = 2.0;
+  const buffer = viewportBeats * BUFFER_MULTIPLIER;
+
+  // Track the computed range so we only rebuild when scroll exits it
+  const computedRangeRef = useRef<{ min: number; max: number; beatScale: number; gridSnap: number; halfWidth: number }>({
+    min: -1, max: -1, beatScale: 0, gridSnap: 0, halfWidth: 0,
+  });
 
   const halfWidth = totalWidth / 2;
 
-  // 라인 지오메트리 계산
+  // Compute stable min/max: only change when scroll exits the inner "safe zone"
+  const innerBuffer = viewportBeats * 0.3; // inner zone that triggers rebuild
+  const prev = computedRangeRef.current;
+  const needsRebuild =
+    prev.beatScale !== beatScale ||
+    prev.gridSnap !== gridSnap ||
+    prev.halfWidth !== halfWidth ||
+    scrollBeat < prev.min + innerBuffer ||
+    scrollBeat + viewportBeats > prev.max - innerBuffer;
+
+  const minBeat = needsRebuild ? Math.max(0, scrollBeat - buffer) : prev.min;
+  const maxBeat = needsRebuild ? Math.min(totalBeats, scrollBeat + viewportBeats + buffer) : prev.max;
+
+  // 라인 지오메트리 계산 (only when range changes)
   useEffect(() => {
     const geometry = geometryRef.current;
     if (!geometry) return;
@@ -975,6 +1078,9 @@ const MeasureLinesRenderer = React.memo(function MeasureLinesRenderer({
     geometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
     geometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
     geometry.computeBoundingSphere();
+
+    // Update tracked range
+    computedRangeRef.current = { min: minBeat, max: maxBeat, beatScale, gridSnap, halfWidth };
   }, [totalBeats, beatScale, gridSnap, halfWidth, minBeat, maxBeat]);
 
   // 마디 번호 - viewport 내만
@@ -1091,7 +1197,8 @@ const NotesRenderer = React.memo(function NotesRenderer({
 
       const x = offsetX + lane.x + lane.width / 2;
       const y = note.beat * beatScale + NOTE_HEIGHT / 2;
-      const colorHex = getNoteColorHex(note, lane.color, false);
+      const laneColorHex = getLaneColorHex(lane.color);
+      const colorHex = getNoteColorHex(note, laneColorHex, false);
 
       // 노트 본체
       _dummy.position.set(x, y, 0);
@@ -1307,87 +1414,133 @@ const HoverPreview = React.memo(function HoverPreview({
   );
 });
 
-/** BPM 마커 렌더러 */
+/** BPM 마커 렌더러 (batched LineSegments + viewport-culled Text) */
 const BpmMarkersRenderer = React.memo(function BpmMarkersRenderer({
   bpmChanges,
   beatScale,
   totalWidth,
+  scrollBeat,
+  viewportBeats,
 }: {
   bpmChanges: BMSBpmChange[];
   beatScale: number;
   totalWidth: number;
+  scrollBeat: number;
+  viewportBeats: number;
 }) {
+  const geometryRef = useRef<THREE.BufferGeometry>(null);
+  const halfWidth = totalWidth / 2;
+
+  // Batched line geometry
+  useEffect(() => {
+    const geometry = geometryRef.current;
+    if (!geometry) return;
+    const positions: number[] = [];
+    for (const change of bpmChanges) {
+      const y = (change.measure * 4 + change.fraction * 4) * beatScale;
+      positions.push(-halfWidth, y, 5, halfWidth, y, 5);
+    }
+    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+    geometry.computeBoundingSphere();
+  }, [bpmChanges, beatScale, halfWidth]);
+
+  // Viewport-culled labels (only render visible ones)
+  const buffer = viewportBeats * 0.5;
+  const minBeat = scrollBeat - buffer;
+  const maxBeat = scrollBeat + viewportBeats + buffer;
+  const visibleLabels = useMemo(() => {
+    return bpmChanges
+      .map((change) => {
+        const beat = change.measure * 4 + change.fraction * 4;
+        return { beat, y: beat * beatScale, bpm: change.bpm };
+      })
+      .filter((l) => l.beat >= minBeat && l.beat <= maxBeat);
+  }, [bpmChanges, beatScale, minBeat, maxBeat]);
+
   return (
     <group>
-      {bpmChanges.map((change, i) => {
-        const y =
-          (change.measure * 4 + change.fraction * 4) * beatScale;
-        return (
-          <group key={i}>
-            <Line
-              points={[
-                [-totalWidth / 2, y, 5],
-                [totalWidth / 2, y, 5],
-              ]}
-              color="#ff6600"
-              lineWidth={2}
-            />
-            <Text
-              position={[totalWidth / 2 + 30, y, 5]}
-              fontSize={10}
-              color="#ff6600"
-              anchorX="left"
-              anchorY="middle"
-              font={undefined}
-            >
-              BPM {change.bpm}
-            </Text>
-          </group>
-        );
-      })}
+      <lineSegments frustumCulled={false}>
+        <bufferGeometry ref={geometryRef} />
+        <lineBasicMaterial color="#ff6600" />
+      </lineSegments>
+      {visibleLabels.map((l, i) => (
+        <Text
+          key={i}
+          position={[halfWidth + 30, l.y, 5]}
+          fontSize={10}
+          color="#ff6600"
+          anchorX="left"
+          anchorY="middle"
+          font={undefined}
+        >
+          BPM {l.bpm}
+        </Text>
+      ))}
     </group>
   );
 });
 
-/** STOP 마커 렌더러 */
+/** STOP 마커 렌더러 (batched LineSegments + viewport-culled Text) */
 const StopMarkersRenderer = React.memo(function StopMarkersRenderer({
   stopEvents,
   beatScale,
   totalWidth,
+  scrollBeat,
+  viewportBeats,
 }: {
   stopEvents: BMSStopEvent[];
   beatScale: number;
   totalWidth: number;
+  scrollBeat: number;
+  viewportBeats: number;
 }) {
+  const geometryRef = useRef<THREE.BufferGeometry>(null);
+  const halfWidth = totalWidth / 2;
+
+  useEffect(() => {
+    const geometry = geometryRef.current;
+    if (!geometry) return;
+    const positions: number[] = [];
+    for (const stop of stopEvents) {
+      const y = (stop.measure * 4 + stop.fraction * 4) * beatScale;
+      positions.push(-halfWidth, y, 5, halfWidth, y, 5);
+    }
+    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+    geometry.computeBoundingSphere();
+  }, [stopEvents, beatScale, halfWidth]);
+
+  const buffer = viewportBeats * 0.5;
+  const minBeat = scrollBeat - buffer;
+  const maxBeat = scrollBeat + viewportBeats + buffer;
+  const visibleLabels = useMemo(() => {
+    return stopEvents
+      .map((stop) => {
+        const beat = stop.measure * 4 + stop.fraction * 4;
+        const durationBeats = stop.duration / 192;
+        return { beat, y: beat * beatScale, label: `STOP ${durationBeats.toFixed(2)}b` };
+      })
+      .filter((l) => l.beat >= minBeat && l.beat <= maxBeat);
+  }, [stopEvents, beatScale, minBeat, maxBeat]);
+
   return (
     <group>
-      {stopEvents.map((stop, i) => {
-        const y =
-          (stop.measure * 4 + stop.fraction * 4) * beatScale;
-        const durationBeats = stop.duration / 192;
-        return (
-          <group key={i}>
-            <Line
-              points={[
-                [-totalWidth / 2, y, 5],
-                [totalWidth / 2, y, 5],
-              ]}
-              color="#cc33ff"
-              lineWidth={2}
-            />
-            <Text
-              position={[totalWidth / 2 + 30, y, 5]}
-              fontSize={10}
-              color="#cc33ff"
-              anchorX="left"
-              anchorY="middle"
-              font={undefined}
-            >
-              STOP {durationBeats.toFixed(2)}b
-            </Text>
-          </group>
-        );
-      })}
+      <lineSegments frustumCulled={false}>
+        <bufferGeometry ref={geometryRef} />
+        <lineBasicMaterial color="#cc33ff" />
+      </lineSegments>
+      {visibleLabels.map((l, i) => (
+        <Text
+          key={i}
+          position={[halfWidth + 30, l.y, 5]}
+          fontSize={10}
+          color="#cc33ff"
+          anchorX="left"
+          anchorY="middle"
+          font={undefined}
+        >
+          {l.label}
+        </Text>
+      ))}
     </group>
   );
 });
@@ -1697,6 +1850,44 @@ const EditorToolbar = React.memo(function EditorToolbar({
   );
 });
 
+/** 판정선 (재생 중 현재 위치를 표시하는 수평선) */
+const EditorJudgmentLine = React.memo(function EditorJudgmentLine({
+  scrollBeatImperativeRef,
+  beatScale,
+  totalWidth,
+}: {
+  scrollBeatImperativeRef: React.RefObject<number>;
+  beatScale: number;
+  totalWidth: number;
+}) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const glowRef = useRef<THREE.Mesh>(null);
+
+  useFrame(() => {
+    const beat = scrollBeatImperativeRef.current ?? 0;
+    const y = beat * beatScale;
+    if (meshRef.current) meshRef.current.position.y = y;
+    if (glowRef.current) glowRef.current.position.y = y;
+  });
+
+  const halfWidth = totalWidth / 2 + 20;
+
+  return (
+    <group>
+      {/* Glow behind */}
+      <mesh ref={glowRef} position={[0, 0, 3]}>
+        <planeGeometry args={[halfWidth * 2, 6]} />
+        <meshBasicMaterial color="#ff6600" transparent opacity={0.15} />
+      </mesh>
+      {/* Main line */}
+      <mesh ref={meshRef} position={[0, 0, 4]}>
+        <planeGeometry args={[halfWidth * 2, 2]} />
+        <meshBasicMaterial color="#ff6600" />
+      </mesh>
+    </group>
+  );
+});
+
 /** 메인 NoteChartEditor 컴포넌트 */
 export const NoteChartEditor = React.memo(function NoteChartEditor({
   notes,
@@ -1725,8 +1916,10 @@ export const NoteChartEditor = React.memo(function NoteChartEditor({
   onStopEditRequest,
   onKeysoundAssign,
   onDropKeysound,
+  onNoteHover,
   scrollToBeat,
   onScrollChange,
+  scrollBeatImperativeRef,
 }: NoteChartEditorProps) {
   // 좌표 변환 ref (드래그 앤 드롭용)
   const coordConverterRef = useRef<CoordConverter | null>(null);
@@ -1812,9 +2005,11 @@ export const NoteChartEditor = React.memo(function NoteChartEditor({
           onStopEditRequest={onStopEditRequest}
           onKeysoundAssign={onKeysoundAssign}
           onDropKeysound={onDropKeysound}
+          onNoteHover={onNoteHover}
           scrollToBeat={scrollToBeat}
           onScrollChange={onScrollChange}
           coordConverterRef={coordConverterRef}
+          scrollBeatImperativeRef={scrollBeatImperativeRef}
         />
       </Canvas>
     </div>

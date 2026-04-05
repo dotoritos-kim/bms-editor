@@ -250,8 +250,10 @@ export class KeysoundPlayer {
    * 키사운드 재생
    * @param keysoundId - 키사운드 ID
    * @param offset - 재생 시작 위치 (초 단위, 기본: 0)
+   * @param scheduledTime - AudioContext 예약 시간 (0이면 즉시 재생)
+   * @param volume - 볼륨 (0-1, 기본: 1)
    */
-  play(keysoundId: string, offset = 0): void {
+  play(keysoundId: string, offset = 0, scheduledTime = 0, volume = 1): void {
     if (!this.preloader || !this._isReady) {
       return; // 조용히 무시 (재생 중 로딩이 완료되지 않은 경우)
     }
@@ -272,7 +274,7 @@ export class KeysoundPlayer {
     try {
       // playAudioSync로 저지연 재생, uniquePlay=true로 동시 재생 지원
       const t0 = performance.now();
-      const result = this.preloader.playAudioSync(id, false, true, offset);
+      const result = this.preloader.playAudioSync(id, false, true, offset, scheduledTime, volume);
       const delta = performance.now() - t0;
       this._playLatencies.push(delta);
       if (this._playLatencies.length > this._maxLatencySamples) {

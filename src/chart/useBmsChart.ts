@@ -183,19 +183,12 @@ export function detectKeyMode(notes: BMSNote[], headers?: { get: (key: string) =
   // SP (Single Play) modes
   // ============================================
 
-  // IIDX SP 스타일 (SC/FZ 사용): 실제 사용된 키 컬럼 수로 판별
+  // IIDX SP 스타일 (SC/FZ 사용):
+  // IIDX에서 컬럼 6,7은 채널 18,19에서 매핑되므로 이 컬럼이 사용되면 반드시 7K
+  // 그렇지 않으면 5K (표준 beatmania 5키 모드)
   if (hasIIDXSpecialLanes) {
-    // 1P 키 컬럼 (1-7) 중 실제로 사용된 개수 카운트
-    const keyColumns = ['1', '2', '3', '4', '5', '6', '7'];
-    const usedKeyCount = keyColumns.filter(col => usedColumns.has(col)).length;
-
-    // 사용된 키 개수에 따라 키 모드 반환
-    if (usedKeyCount >= 7) return '7K';
-    if (usedKeyCount === 6) return '6K';
-    if (usedKeyCount === 5) return '5K';
-    if (usedKeyCount <= 4) return '4K';
-
-    return '5K'; // fallback
+    if (usedColumns.has('6') || usedColumns.has('7')) return '7K';
+    return '5K';
   }
 
   // Keyboard SP 스타일 (SC 없음): 컬럼 번호로 판단

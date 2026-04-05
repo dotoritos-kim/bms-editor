@@ -75,7 +75,7 @@ export function beatToTime(beat: number, bpmEvents: BpmEvent[]): number {
 }
 
 /** 절대 시간(초) → 비트 변환 */
-function timeToBeat(targetTime: number, bpmEvents: BpmEvent[]): number {
+export function timeToBeat(targetTime: number, bpmEvents: BpmEvent[]): number {
   let time = 0;
   let prevBeat = 0;
   let currentBpm = bpmEvents[0]?.bpm ?? 130;
