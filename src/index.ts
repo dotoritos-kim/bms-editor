@@ -27,7 +27,7 @@ export { useBmsChart, detectKeyMode } from './chart';
 export type { BmsChartInfo, UseBmsChartOptions, UseBmsChartState, UseBmsChartControls, UseBmsChartReturn } from './chart';
 
 // Lane Config
-export { generateLaneConfig, getLaneIds } from './chart';
+export { generateLaneConfig, getLaneIds, getDpSplitIndex } from './chart';
 export type { LaneConfig } from './chart';
 
 // Editor Playback

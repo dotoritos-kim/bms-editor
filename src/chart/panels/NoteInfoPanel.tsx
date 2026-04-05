@@ -105,9 +105,10 @@ function beatToSeconds(
  * 비트가 그리드 스냅에 정확히 맞는지 확인
  */
 function isOnGrid(beat: number, gridSnap: GridSnap): boolean {
-  const gridUnit = 4 / gridSnap; // gridSnap은 1마디(4비트)당 분할 수
-  const remainder = beat % gridUnit;
-  return Math.abs(remainder) < 0.0001 || Math.abs(remainder - gridUnit) < 0.0001;
+  const TICKS_PER_BEAT = 960;
+  const tick = Math.round(beat * TICKS_PER_BEAT);
+  const gridTicks = Math.round(TICKS_PER_BEAT * 4 / gridSnap);
+  return gridTicks > 0 && tick % gridTicks === 0;
 }
 
 /**

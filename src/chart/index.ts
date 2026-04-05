@@ -27,7 +27,7 @@ export { KeysoundPlayer, createKeysoundPlayer } from '@rhythm-archive/bms-player
 export type { KeysoundPlayerOptions, KeysoundPlayerResolveConfig } from '@rhythm-archive/bms-player';
 
 // Lane Config
-export { generateLaneConfig, getLaneIds } from './laneConfig';
+export { generateLaneConfig, getLaneIds, getDpSplitIndex } from './laneConfig';
 export type { LaneConfig } from './laneConfig';
 
 // Chart Editor

@@ -320,6 +320,12 @@ export interface NoteChartViewerProps {
   noteScale?: number;
   /** 레인 너비 배율 (기본 1.0) */
   laneWidthScale?: number;
+  /** 초기 스크롤 위치 (beat 단위) */
+  initialScrollBeat?: number;
+  /** 외부에서 스크롤 위치를 변경할 때 사용 (변경 시 해당 beat로 이동) */
+  scrollToBeat?: number;
+  /** unchanged 노트 불투명도 (0-1, diff 모드에서 변경되지 않은 노트 희미하게) */
+  unchangedOpacity?: number;
 }
 
 const DEFAULT_NOTE_TYPE_FILTER: NoteTypeFilter = {
@@ -334,7 +340,7 @@ function applyLaneOption(lanes: LaneConfig[], option: LaneOption, seed?: number)
   if (option === 'normal') return lanes;
 
   // 스크래치/FZ 레인 분리 (playableLanes만 셔플)
-  const playableLanes = lanes.filter(l => !l.isScratch && l.id !== 'FZ' && l.id !== 'FZ2');
+  const playableLanes = lanes.filter(l => !l.isScratch && !l.isBgm && l.id !== 'FZ' && l.id !== 'FZ2');
 
   let arrangedLanes: LaneConfig[];
 
@@ -364,7 +370,7 @@ function applyLaneOption(lanes: LaneConfig[], option: LaneOption, seed?: number)
   let playableIndex = 0;
 
   for (const original of lanes) {
-    if (original.isScratch || original.id === 'FZ' || original.id === 'FZ2') {
+    if (original.isScratch || original.isBgm || original.id === 'FZ' || original.id === 'FZ2') {
       result.push(original);
     } else {
       const arranged = arrangedLanes[playableIndex++];
@@ -860,6 +866,7 @@ const NotesRenderer = React.memo(function NotesRenderer({
   positioning,
   scaleWidthByScroll = false,
   noteScale = 1.0,
+  unchangedOpacity,
 }: {
   notes: BMSNote[];
   lanes: LaneConfig[];
@@ -874,8 +881,10 @@ const NotesRenderer = React.memo(function NotesRenderer({
   scaleWidthByScroll?: boolean;
   /** 노트 높이(두께) 배율 */
   noteScale?: number;
+  /** diff 모드에서 unchanged 노트의 불투명도 (기본 1.0) */
+  unchangedOpacity?: number;
 }) {
-  const totalWidth = lanes.reduce((sum, l) => sum + l.width, 0);
+  const totalWidth = (() => { const last = lanes[lanes.length - 1]; return last ? last.x + last.width : 0; })();
   const offsetX = -totalWidth / 2;
   const laneMap = useMemo(() => new Map(lanes.map(l => [l.id, l])), [lanes]);
   const addedSet = useMemo(() => new Set(addedNotes.map(n => `${n.beat}-${n.column}`)), [addedNotes]);
@@ -987,8 +996,10 @@ const NotesRenderer = React.memo(function NotesRenderer({
       }
 
       // Regular notes - 높이(두께) 스케일 적용
-      const regKey = `reg-${color}`;
-      addToGroup(regKey, [x, y], [baseWidth, heightScale], color, 1, 0, 'note');
+      const isUnchanged = diffMode && !isAdded && !isRemoved && !isModified;
+      const noteOpacity = isUnchanged && unchangedOpacity !== undefined ? unchangedOpacity : 1;
+      const regKey = `reg-${color}-${noteOpacity}`;
+      addToGroup(regKey, [x, y], [baseWidth, heightScale], color, noteOpacity, 0, 'note');
     }
 
     return groups;
@@ -2363,6 +2374,9 @@ export function NoteChartViewer({
   timingMarkerSettings: initialTimingMarkerSettings,
   noteScale = 1.0,
   laneWidthScale = 1.0,
+  initialScrollBeat,
+  scrollToBeat,
+  unchangedOpacity,
 }: NoteChartViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const outerContainerRef = useRef<HTMLDivElement>(null);
@@ -2391,7 +2405,14 @@ export function NoteChartViewer({
   const timingRef = useRef(timing);
 
   const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode);
-  const [scrollBeat, setScrollBeat] = useState(0);
+  const [scrollBeat, setScrollBeat] = useState(initialScrollBeat ?? 0);
+
+  // 외부에서 scrollToBeat가 변경되면 해당 위치로 이동
+  useEffect(() => {
+    if (scrollToBeat !== undefined && scrollToBeat >= 0) {
+      setScrollBeat(scrollToBeat);
+    }
+  }, [scrollToBeat]);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartY, setDragStartY] = useState(0);
@@ -4502,7 +4523,7 @@ export function NoteChartViewer({
               <LanesRenderer lanes={lanes} totalHeight={totalHeight} totalWidth={chartWidth} />
               <MeasureLinesRenderer totalBeats={maxBeat} beatScale={effectiveBeatScale} totalWidth={chartWidth} gridDivision={gridDivision} bpmChanges={bpmChanges} baseBpm={bpm} positioning={positioning} />
               <TimingMarkersRenderer bpmChanges={bpmChanges} stops={stops} scrollChanges={scrollChanges} beatScale={effectiveBeatScale} baseBeatScale={beatScale} totalWidth={chartWidth} showMarkers={showTimingMarkers} positioning={positioning} settings={timingMarkerSettings} />
-              <NotesRenderer notes={notes} lanes={lanes} beatScale={effectiveBeatScale} noteTypeFilter={localNoteFilter} diffMode={diffMode} addedNotes={addedNotes} removedNotes={removedNotes} modifiedNotes={modifiedNotes} positioning={positioning} scaleWidthByScroll={scaleWidthByScroll} noteScale={noteScale} />
+              <NotesRenderer notes={notes} lanes={lanes} beatScale={effectiveBeatScale} noteTypeFilter={localNoteFilter} diffMode={diffMode} addedNotes={addedNotes} removedNotes={removedNotes} modifiedNotes={modifiedNotes} positioning={positioning} scaleWidthByScroll={scaleWidthByScroll} noteScale={noteScale} unchangedOpacity={unchangedOpacity} />
               {/* Judgment line - only visible during playback */}
               {viewMode === 'playback' && isPlaying && (
                 <>
