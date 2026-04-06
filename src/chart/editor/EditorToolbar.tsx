@@ -19,6 +19,9 @@ import {
   Clipboard,
   Save,
   GitBranch,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
 } from 'lucide-react';
 import { cn } from '../../utils';
 import type { KeyMode } from '../NoteChartViewer';
@@ -58,7 +61,14 @@ export const EditorToolbar = React.memo(function EditorToolbar({
   layerConfig,
   onLayerVisibleToggle,
   onLayerLockToggle,
+  onZoomIn,
+  onZoomOut,
+  onZoomPreset,
+  onZoomFit,
+  currentBeatScale,
 }: EditorToolbarProps) {
+  const [showZoomPreset, setShowZoomPreset] = React.useState(false);
+
   const tools: { id: EditorTool; icon: React.ReactNode; label: string; shortcut: string; description: string }[] = [
     { id: 'select', icon: <MousePointer2 size={16} />, label: '선택', shortcut: 'V', description: '클릭/드래그로 노트를 선택합니다. Shift+클릭으로 추가 선택.' },
     { id: 'addNote', icon: <Plus size={16} />, label: '추가', shortcut: 'A', description: '��릭한 위치에 새 노트를 배치합니다.' },
@@ -199,6 +209,67 @@ export const EditorToolbar = React.memo(function EditorToolbar({
             title={`노트 두께: ${noteHeight}`}
           />
           <span className="text-[10px] text-muted-foreground w-4">{noteHeight}</span>
+        </div>
+      )}
+
+      {/* 줌 컨트롤 */}
+      {(onZoomIn || onZoomOut) && (
+        <div className="flex items-center gap-1 border-r pr-2">
+          <span className="text-xs text-muted-foreground">Z:</span>
+          <button
+            onClick={onZoomOut}
+            disabled={currentBeatScale !== undefined && currentBeatScale <= 2}
+            className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"
+            title="축소 (-)"
+          >
+            <ZoomOut size={14} />
+          </button>
+          <div className="relative">
+            <button
+              onClick={() => setShowZoomPreset((v) => !v)}
+              className="w-8 text-[10px] text-center text-muted-foreground hover:text-foreground px-1"
+              title="줌 배율 (클릭: 프리셋)"
+            >
+              {currentBeatScale ?? 20}
+            </button>
+            {showZoomPreset && (
+              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-popover border border-border rounded shadow-md z-50 py-1 min-w-[100px]">
+                {[
+                  { label: 'Overview', scale: 5 },
+                  { label: 'Work', scale: 20 },
+                  { label: 'Detail', scale: 80 },
+                ].map((p) => (
+                  <button
+                    key={p.scale}
+                    onClick={() => { onZoomPreset?.(p.scale); setShowZoomPreset(false); }}
+                    className={cn(
+                      'block w-full px-3 py-1 text-xs hover:bg-muted text-left transition-colors',
+                      currentBeatScale === p.scale && 'text-blue-400'
+                    )}
+                  >
+                    {p.label} <span className="text-muted-foreground">({p.scale})</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={onZoomIn}
+            disabled={currentBeatScale !== undefined && currentBeatScale >= 200}
+            className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"
+            title="확대 (=)"
+          >
+            <ZoomIn size={14} />
+          </button>
+          {onZoomFit && (
+            <button
+              onClick={onZoomFit}
+              className="p-1 rounded hover:bg-muted transition-colors"
+              title="차트 전체 보기"
+            >
+              <Maximize2 size={14} />
+            </button>
+          )}
         </div>
       )}
 
