@@ -23,15 +23,26 @@ import {
   DEFAULT_NOTE_HEIGHT,
   type NoteChartEditorProps,
   type CoordConverter,
+  type ZoomControl,
 } from './editor/types';
-import { NoteHeightContext, snapBeatToGrid } from './editor/editorUtils';
+
+/** 키모드별 기본 beatScale (px/beat) */
+function defaultBeatScaleForKeyMode(keyMode: string): number {
+  if (['4K', '5K', '6K', '7K'].includes(keyMode)) return 20;
+  if (['8K', '9K', '10K'].includes(keyMode)) return 15;
+  if (['12K', '14K'].includes(keyMode)) return 12;
+  if (['18K', '24K'].includes(keyMode)) return 8;
+  if (keyMode === '48K') return 4;
+  return 20;
+}
+import { NoteHeightContext, snapBeatToGrid, getBgmLaneId, isBgmLaneId, bgmLaneIdToChannel } from './editor/editorUtils';
 import { LanesRenderer, MeasureLinesRenderer, BpmMarkersRenderer, StopMarkersRenderer } from './editor/gridRenderers';
 import { NotesRenderer, HoverPreview, RubberBandRect, DragGhostNotes, NotePassEffect, EditorJudgmentLine } from './editor/noteRenderers';
 
 // Re-exports for backwards compatibility
 export { EditorToolbar } from './editor/EditorToolbar';
 export { GRID_SNAP_OPTIONS } from './editor/types';
-export type { EditorTool, SelectedNoteType, GridSnap, NoteChartEditorProps } from './editor/types';
+export type { EditorTool, SelectedNoteType, GridSnap, NoteChartEditorProps, ZoomControl } from './editor/types';
 
 /** 에디터 캔버스 내부 컴포넌트 */
 function EditorCanvas({
@@ -64,17 +75,23 @@ function EditorCanvas({
   onKeysoundAssign,
   onDropKeysound: _onDropKeysound,
   onNoteHover,
+  highlightKeysound,
   scrollToBeat: externalScrollBeat,
   onScrollChange,
   coordConverterRef,
   scrollBeatImperativeRef,
-}: Omit<NoteChartEditorProps, 'height' | 'className' | 'hasUnsavedChanges' | 'branchName'> & {
+  bgmChannelCount,
+  zoomControlRef,
+  onBeatScaleChange,
+}: Omit<NoteChartEditorProps, 'height' | 'className' | 'hasUnsavedChanges' | 'branchName' | 'noteHeight'> & {
   coordConverterRef?: React.MutableRefObject<CoordConverter | null>;
   scrollBeatImperativeRef?: React.RefObject<number>;
 }) {
   const { camera, gl, size } = useThree();
   const [scrollBeat, setScrollBeat] = useState(0);
-  const [beatScale, setBeatScale] = useState(initialBeatScale);
+  const [beatScale, setBeatScale] = useState(() =>
+    initialBeatScale === 20 ? defaultBeatScaleForKeyMode(keyMode) : initialBeatScale
+  );
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [hoverPosition, setHoverPosition] = useState<{ beat: number; column: string } | null>(null);
@@ -86,6 +103,7 @@ function EditorCanvas({
   // Snap guideline: nearest note beat when hovering/dragging
   const [snapGuideBeat, setSnapGuideBeat] = useState<number | null>(null);
   const pointerUpProcessedRef = useRef(false);
+  const pendingBeatScaleRef = useRef<number | null>(null);
 
   const scrollBeatRef = useRef(scrollBeat);
   const beatScaleRef = useRef(beatScale);
@@ -93,7 +111,7 @@ function EditorCanvas({
   scrollBeatRef.current = scrollBeat;
   beatScaleRef.current = beatScale;
 
-  const lanes = useMemo(() => generateLaneConfig(keyMode), [keyMode]);
+  const lanes = useMemo(() => generateLaneConfig(keyMode, bgmChannelCount), [keyMode, bgmChannelCount]);
   const totalWidth = useMemo(() => {
     const last = lanes[lanes.length - 1];
     return last ? last.x + last.width : 0;
@@ -127,8 +145,19 @@ function EditorCanvas({
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
-        const zoomDelta = e.deltaY > 0 ? -2 : 2;
-        setBeatScale((prev) => Math.max(5, Math.min(80, prev + zoomDelta)));
+        const factor = e.deltaY > 0 ? (1 / 1.15) : 1.15;
+        const newScale = Math.max(2, Math.min(200, Math.round(beatScaleRef.current * factor)));
+        // 커서 고정 줌: 마우스 위치의 beat를 유지
+        const rect = gl.domElement.getBoundingClientRect();
+        const cursorYFraction = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+        const oldViewportBeats = viewportBeatsRef.current;
+        const newViewportBeats = oldViewportBeats * beatScaleRef.current / newScale;
+        const cursorBeat = scrollBeatRef.current + cursorYFraction * oldViewportBeats;
+        const newScrollBeat = cursorBeat - cursorYFraction * newViewportBeats;
+        const maxScroll = Math.max(0, totalBeats - newViewportBeats + 4);
+        setBeatScale(newScale);
+        pendingBeatScaleRef.current = newScale;
+        setScrollBeat(Math.max(0, Math.min(maxScroll, newScrollBeat)));
       } else {
         const delta = e.deltaY > 0 ? -4 : 4;
         const maxScroll = Math.max(0, totalBeats - viewportBeatsRef.current + 4);
@@ -183,6 +212,11 @@ function EditorCanvas({
     const effectiveScrollBeat = scrollBeatImperativeRef?.current ?? scrollBeatRef.current;
     const targetY = effectiveScrollBeat * beatScaleRef.current + viewportHeight / 2;
     camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.15);
+    // rAF 디바운스: pendingBeatScaleRef가 있으면 onBeatScaleChange 호출 후 클리어
+    if (pendingBeatScaleRef.current !== null) {
+      onBeatScaleChange?.(pendingBeatScaleRef.current);
+      pendingBeatScaleRef.current = null;
+    }
   });
 
   // 좌표 변환
@@ -238,6 +272,48 @@ function EditorCanvas({
     return () => { if (coordConverterRef) coordConverterRef.current = null; };
   }, [coordConverterRef, screenToWorld, worldToLaneBeat]);
 
+  // size와 totalBeats를 ref로 유지 (fitToChart에서 최신값 접근)
+  const sizeRef = useRef(size);
+  sizeRef.current = size;
+  const totalBeatsZoomRef = useRef(totalBeats);
+  totalBeatsZoomRef.current = totalBeats;
+
+  useEffect(() => {
+    if (!zoomControlRef) return;
+    zoomControlRef.current = {
+      zoomIn: () => {
+        setBeatScale((prev) => {
+          const n = Math.min(200, Math.round(prev * 1.3));
+          pendingBeatScaleRef.current = n;
+          return n;
+        });
+      },
+      zoomOut: () => {
+        setBeatScale((prev) => {
+          const n = Math.max(2, Math.round(prev / 1.3));
+          pendingBeatScaleRef.current = n;
+          return n;
+        });
+      },
+      zoomTo: (scale: number) => {
+        const n = Math.max(2, Math.min(200, Math.round(scale)));
+        setBeatScale(n);
+        pendingBeatScaleRef.current = n;
+      },
+      fitToChart: () => {
+        const ortho = camera as THREE.OrthographicCamera;
+        const zoom = ortho.zoom || 1;
+        const viewH = sizeRef.current.height / zoom;
+        const tb = totalBeatsZoomRef.current;
+        const n = tb > 0 ? Math.max(2, Math.min(200, Math.round(viewH / (tb * 1.1)))) : 20;
+        setBeatScale(n);
+        setScrollBeat(0);
+        pendingBeatScaleRef.current = n;
+      },
+    };
+    return () => { if (zoomControlRef) zoomControlRef.current = null; };
+  }, [zoomControlRef, camera]);
+
   const worldToLaneRawBeat = useCallback(
     (worldX: number, worldY: number) => {
       const relativeX = worldX - offsetX;
@@ -255,8 +331,8 @@ function EditorCanvas({
     (worldX: number, worldY: number): EditableBMSNote | null => {
       const { column, rawBeat } = worldToLaneRawBeat(worldX, worldY);
       if (!column) return null;
-      const clickTolerance = 4 / beatScale;
-      const isBgmLane = column === 'BGM';
+      const clickTolerance = 2 / beatScale;
+      const bgmLane = isBgmLaneId(column);
       return (
         notes.find(
           (note) => {
@@ -264,8 +340,11 @@ function EditorCanvas({
             const noteLayer = (note.noteType || 'playable') as keyof NonNullable<typeof layerConfig>;
             const ls = layerConfig?.[noteLayer];
             if (ls && (!ls.visible || ls.locked)) return false;
-            return (isBgmLane ? note.noteType === 'bgm' : note.column === column) &&
-              Math.abs(note.beat - rawBeat) < clickTolerance;
+            if (bgmLane) {
+              return note.noteType === 'bgm' && getBgmLaneId(note) === column &&
+                Math.abs(note.beat - rawBeat) < clickTolerance;
+            }
+            return note.column === column && Math.abs(note.beat - rawBeat) < clickTolerance;
           }
         ) || null
       );
@@ -297,7 +376,7 @@ function EditorCanvas({
       const maxBeat = (Math.max(y1, y2) - noteHeight / 2) / beatScale;
       return notes
         .filter((note) => {
-          const laneId = note.noteType === 'bgm' ? 'BGM' : note.column;
+          const laneId = note.noteType === 'bgm' ? getBgmLaneId(note) : note.column;
           const lane = lanes.find((l) => l.id === laneId);
           if (!lane) return false;
           const noteX = offsetX + lane.x + lane.width / 2;
@@ -399,7 +478,7 @@ function EditorCanvas({
           break;
         }
         case 'addNote': {
-          const isBgm = column === 'BGM' || selectedNoteType === 'bgm';
+          const isBgm = isBgmLaneId(column) || selectedNoteType === 'bgm';
           const isLN = !isBgm && selectedNoteType === 'longNote';
           if (isLN) {
             // Start LN drag creation — finalized on pointerUp
@@ -408,12 +487,14 @@ function EditorCanvas({
           } else {
             // measure/fraction은 store.addNote에서 tick 기반으로 재계산됨
             const noteType: NoteType = isBgm ? 'bgm' : (selectedNoteType as NoteType);
+            const bgmChannel = isBgmLaneId(column) ? bgmLaneIdToChannel(column) : undefined;
             onNoteAdd({
               beat, measure: 0, fraction: 0,
               column: isBgm ? undefined : column,
               keysound: currentKeysound,
               noteType,
               channel: '',
+              bgmChannel,
             });
           }
           break;
@@ -439,7 +520,7 @@ function EditorCanvas({
         }
         case 'bpm': {
           const rawBeat = world.y / beatScale;
-          const clickTolerance = 4 / beatScale;
+          const clickTolerance = 2 / beatScale;
           const existingBpm = bpmChanges?.find((c) => Math.abs(c.measure * 4 + c.fraction * 4 - rawBeat) < clickTolerance);
           if (existingBpm && onBpmEditRequest) onBpmEditRequest(existingBpm);
           else if (onBpmRequest) onBpmRequest(beat);
@@ -448,7 +529,7 @@ function EditorCanvas({
         }
         case 'stop': {
           const rawBeat = world.y / beatScale;
-          const stopClickTolerance = 4 / beatScale;
+          const stopClickTolerance = 2 / beatScale;
           const existingStop = stopEvents?.find((s) => Math.abs(s.measure * 4 + s.fraction * 4 - rawBeat) < stopClickTolerance);
           if (existingStop && onStopEditRequest) onStopEditRequest(existingStop);
           else if (onStopRequest) onStopRequest(beat);
@@ -515,12 +596,38 @@ function EditorCanvas({
         const { column: newColumn, beat: newBeat } = worldToLaneBeat(world.x, world.y);
         const { column: startColumn, beat: startBeat } = worldToLaneBeat(dragStart.x, dragStart.y);
         if (newColumn && startColumn) {
-          const beatDelta = newBeat - startBeat;
-          const startLaneIdx = lanes.findIndex((l) => l.id === startColumn);
-          const endLaneIdx = lanes.findIndex((l) => l.id === newColumn);
-          const colDelta = endLaneIdx - startLaneIdx;
-          if (Math.abs(beatDelta) > 0.01 || colDelta !== 0) {
-            onNoteMove(Array.from(selectedNotes), { beat: beatDelta, columnDelta: colDelta !== 0 ? colDelta : undefined }, gridSnap);
+          const startIsBgm = isBgmLaneId(startColumn);
+          const endIsBgm = isBgmLaneId(newColumn);
+
+          if (!startIsBgm && endIsBgm) {
+            // Playable → BGM: convert note type (beat shift only, no column delta)
+            const beatDelta = newBeat - startBeat;
+            if (Math.abs(beatDelta) > 0.01) {
+              onNoteMove(Array.from(selectedNotes), { beat: beatDelta }, gridSnap);
+            }
+            // Change type to BGM with target channel
+            const targetChannel = bgmLaneIdToChannel(newColumn);
+            for (const noteId of selectedNotes) {
+              onNoteUpdate?.(noteId, { noteType: 'bgm', column: undefined, bgmChannel: targetChannel });
+            }
+          } else if (startIsBgm && !endIsBgm) {
+            // BGM → Playable: convert note type
+            const beatDelta = newBeat - startBeat;
+            if (Math.abs(beatDelta) > 0.01) {
+              onNoteMove(Array.from(selectedNotes), { beat: beatDelta }, gridSnap);
+            }
+            for (const noteId of selectedNotes) {
+              onNoteUpdate?.(noteId, { noteType: 'playable', column: newColumn, bgmChannel: undefined });
+            }
+          } else {
+            // Normal move within same type
+            const beatDelta = newBeat - startBeat;
+            const startLaneIdx = lanes.findIndex((l) => l.id === startColumn);
+            const endLaneIdx = lanes.findIndex((l) => l.id === newColumn);
+            const colDelta = endLaneIdx - startLaneIdx;
+            if (Math.abs(beatDelta) > 0.01 || colDelta !== 0) {
+              onNoteMove(Array.from(selectedNotes), { beat: beatDelta, columnDelta: colDelta !== 0 ? colDelta : undefined }, gridSnap);
+            }
           }
         }
       }
@@ -538,7 +645,7 @@ function EditorCanvas({
       </mesh>
       <LanesRenderer lanes={lanes} totalHeight={totalHeight} keyMode={keyMode} />
       <MeasureLinesRenderer totalBeats={totalBeats} beatScale={beatScale} totalWidth={totalWidth} gridSnap={gridSnap} scrollBeat={scrollBeat} viewportBeats={size.height / beatScale} timeSignatures={timeSignatures} gridSnapOverrides={gridSnapOverrides} />
-      <NotesRenderer notes={notes} lanes={lanes} beatScale={beatScale} selectedNotes={selectedNotes} offsetX={offsetX} scrollBeat={scrollBeat} viewportBeats={size.height / beatScale} scrollBeatImperativeRef={scrollBeatImperativeRef} layerConfig={layerConfig} />
+      <NotesRenderer notes={notes} lanes={lanes} beatScale={beatScale} selectedNotes={selectedNotes} offsetX={offsetX} scrollBeat={scrollBeat} viewportBeats={size.height / beatScale} scrollBeatImperativeRef={scrollBeatImperativeRef} layerConfig={layerConfig} highlightKeysound={highlightKeysound} />
       {activeTool === 'addNote' && !lnDragCreate && hoverPosition && (
         <HoverPreview beat={hoverPosition.beat} column={hoverPosition.column} lanes={lanes} beatScale={beatScale} offsetX={offsetX} isSilent={currentKeysound === '00'} isLongNote={selectedNoteType === 'longNote'} />
       )}
@@ -586,11 +693,14 @@ export const NoteChartEditor = React.memo(function NoteChartEditor({
   notes, keyMode, totalBeats, height = 600, beatScale = 20, className,
   activeTool, gridSnap, snapEnabled, gridSnapOverrides, layerConfig, selectedNotes, selectedNoteType, currentKeysound,
   bpmChanges, stopEvents, baseBpm = 120, timeSignatures,
+  bgmChannelCount,
   onNoteAdd, onNoteDelete, onNoteMove, onNoteSelect, onNoteUpdate,
   onBpmChange, onBpmRequest, onBpmEditRequest, onStopRequest, onStopEditRequest,
   onKeysoundAssign, onDropKeysound, onNoteHover,
+  highlightKeysound,
   scrollToBeat, onScrollChange, scrollBeatImperativeRef,
   noteHeight: noteHeightProp = DEFAULT_NOTE_HEIGHT,
+  zoomControlRef, onBeatScaleChange,
 }: NoteChartEditorProps) {
   const coordConverterRef = useRef<CoordConverter | null>(null);
 
@@ -629,7 +739,7 @@ export const NoteChartEditor = React.memo(function NoteChartEditor({
         style={{ height, minHeight: 0 }}
         orthographic
         camera={{ zoom: 1, position: [0, 0, 100], near: 0.1, far: 1000 }}
-        gl={{ antialias: true }}
+        gl={{ antialias: false }}
         resize={{ debounce: 16 }}
       >
         <NoteHeightContext.Provider value={noteHeightProp}>
@@ -644,8 +754,11 @@ export const NoteChartEditor = React.memo(function NoteChartEditor({
           onBpmChange={onBpmChange} onBpmRequest={onBpmRequest} onBpmEditRequest={onBpmEditRequest}
           onStopRequest={onStopRequest} onStopEditRequest={onStopEditRequest}
           onKeysoundAssign={onKeysoundAssign} onDropKeysound={onDropKeysound} onNoteHover={onNoteHover}
+          highlightKeysound={highlightKeysound}
+          bgmChannelCount={bgmChannelCount}
           scrollToBeat={scrollToBeat} onScrollChange={onScrollChange}
           coordConverterRef={coordConverterRef} scrollBeatImperativeRef={scrollBeatImperativeRef}
+          zoomControlRef={zoomControlRef} onBeatScaleChange={onBeatScaleChange}
         />
         </NoteHeightContext.Provider>
       </Canvas>
