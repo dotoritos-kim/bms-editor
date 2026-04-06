@@ -104,6 +104,7 @@ function EditorCanvas({
   const [snapGuideBeat, setSnapGuideBeat] = useState<number | null>(null);
   const pointerUpProcessedRef = useRef(false);
   const pendingBeatScaleRef = useRef<number | null>(null);
+  const initialBeatScaleReportedRef = useRef(false);
 
   const scrollBeatRef = useRef(scrollBeat);
   const beatScaleRef = useRef(beatScale);
@@ -212,6 +213,11 @@ function EditorCanvas({
     const effectiveScrollBeat = scrollBeatImperativeRef?.current ?? scrollBeatRef.current;
     const targetY = effectiveScrollBeat * beatScaleRef.current + viewportHeight / 2;
     camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.15);
+    // 초기 beatScale 한 번 보고 (mount 후 첫 프레임)
+    if (!initialBeatScaleReportedRef.current) {
+      initialBeatScaleReportedRef.current = true;
+      onBeatScaleChange?.(beatScaleRef.current);
+    }
     // rAF 디바운스: pendingBeatScaleRef가 있으면 onBeatScaleChange 호출 후 클리어
     if (pendingBeatScaleRef.current !== null) {
       onBeatScaleChange?.(pendingBeatScaleRef.current);
