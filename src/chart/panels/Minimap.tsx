@@ -32,6 +32,25 @@ interface MinimapNote {
   noteType?: string;
 }
 
+/** Precomputed density entry for one measure — color resolved by caller */
+export interface MinimapDensityEntry {
+  /** 0.0 – 1.0 normalized density */
+  normalized: number;
+  /** Pre-computed CSS color string (e.g. from densityToColor()) */
+  color: string;
+  /** Beat at which this measure starts */
+  startBeat: number;
+  /** Beat at which this measure ends */
+  endBeat: number;
+}
+
+/** Bookmark entry for minimap marker rendering */
+export interface MinimapBookmark {
+  beat: number;
+  name: string;
+  color?: string;
+}
+
 interface MinimapProps {
   notes: MinimapNote[];
   totalBeats: number;
@@ -39,6 +58,10 @@ interface MinimapProps {
   viewportBeats: number;
   onNavigate: (beat: number) => void;
   className?: string;
+  /** Optional per-measure density heatmap data */
+  densityData?: MinimapDensityEntry[];
+  /** Optional bookmark markers */
+  bookmarks?: MinimapBookmark[];
 }
 
 export const Minimap = React.memo(function Minimap({
@@ -48,6 +71,8 @@ export const Minimap = React.memo(function Minimap({
   viewportBeats,
   onNavigate,
   className,
+  densityData,
+  bookmarks,
 }: MinimapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -115,19 +140,44 @@ export const Minimap = React.memo(function Minimap({
     const safeTotalBeats = Math.max(totalBeats, 1);
     const scale = ch / safeTotalBeats;
     const laneCount = laneOrder.length || 1;
-    const laneW = Math.max((cw - 4) / laneCount, 2); // 2px side padding
-    const padX = 2;
+    const DENSITY_BAR_WIDTH = 8;
+    const hasDensity = densityData && densityData.length > 0;
+    const padX = hasDensity ? DENSITY_BAR_WIDTH + 2 : 2;
+    const laneW = Math.max((cw - padX - 2) / laneCount, 2);
 
     // Background
     ctx.fillStyle = '#0c0c18';
     ctx.fillRect(0, 0, cw, ch);
 
+    // ── Density heatmap bar (left 8px strip) ──────────────────────────────
+    if (hasDensity) {
+      for (const entry of densityData!) {
+        if (entry.normalized <= 0) continue;
+        const y1 = ch - entry.endBeat * scale;
+        const y2 = ch - entry.startBeat * scale;
+        const stripH = Math.max(y2 - y1, 1);
+        ctx.fillStyle = entry.color;
+        ctx.globalAlpha = 0.85;
+        ctx.fillRect(0, y1, DENSITY_BAR_WIDTH, stripH);
+      }
+      ctx.globalAlpha = 1;
+      // 1px separator line between density bar and note area
+      ctx.strokeStyle = '#2a2a44';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(DENSITY_BAR_WIDTH, 0);
+      ctx.lineTo(DENSITY_BAR_WIDTH, ch);
+      ctx.stroke();
+    }
+
     // Lane backgrounds (subtle alternating)
     for (let i = 0; i < laneOrder.length; i++) {
       const x = padX + i * laneW;
       ctx.fillStyle = i % 2 === 0 ? '#10101e' : '#141428';
+      ctx.globalAlpha = densityData && densityData.length > 0 ? 0.55 : 1;
       ctx.fillRect(x, 0, laneW, ch);
     }
+    ctx.globalAlpha = 1;
 
     // Measure lines (every 4 beats)
     ctx.strokeStyle = '#2a2a44';
@@ -213,7 +263,36 @@ export const Minimap = React.memo(function Minimap({
     ctx.moveTo(0, vpBottom);
     ctx.lineTo(cw, vpBottom);
     ctx.stroke();
-  }, [notes, totalBeats, currentBeat, viewportBeats, size, laneOrder, colPosMap]);
+
+    // ── Bookmark markers ────────────────────────────────────────────────────
+    if (bookmarks && bookmarks.length > 0) {
+      for (const bm of bookmarks) {
+        const y = ch - bm.beat * scale;
+        const bmColor = bm.color || '#ffcc44';
+        // Horizontal marker line across full width
+        ctx.strokeStyle = bmColor;
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = 0.9;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(cw, y);
+        ctx.stroke();
+        // Right-aligned name text
+        ctx.font = '8px sans-serif';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'bottom';
+        ctx.fillStyle = bmColor;
+        ctx.globalAlpha = 1;
+        const maxTextWidth = cw - 4;
+        let displayName = bm.name;
+        while (ctx.measureText(displayName).width > maxTextWidth && displayName.length > 1) {
+          displayName = displayName.slice(0, -1);
+        }
+        ctx.fillText(displayName, cw - 2, y - 2);
+      }
+      ctx.globalAlpha = 1;
+    }
+  }, [notes, totalBeats, currentBeat, viewportBeats, size, laneOrder, colPosMap, densityData, bookmarks]);
 
   // Click/drag to navigate (clamp to valid scroll range to prevent feedback oscillation)
   const navigateFromEvent = useCallback(
