@@ -37,6 +37,14 @@ export interface CoordConverter {
   screenToWorldBeat: (clientX: number, clientY: number) => { beat: number; column: string | null } | null;
 }
 
+/** 줌 컨트롤 API (zoomControlRef용) */
+export interface ZoomControl {
+  zoomIn: () => void;
+  zoomOut: () => void;
+  zoomTo: (scale: number) => void;
+  fitToChart: () => void;
+}
+
 export interface NoteChartEditorProps {
   /** 편집할 노트 배열 */
   notes: EditableBMSNote[];
@@ -79,6 +87,8 @@ export interface NoteChartEditorProps {
     landmine: { visible: boolean; locked: boolean; opacity: number };
     bgm: { visible: boolean; locked: boolean; opacity: number };
   };
+  /** BGM 채널 수 (멀티 BGM 레인 생성용, 기본값 1) */
+  bgmChannelCount?: number;
 
   // 이벤트 핸들러
   onNoteAdd: (note: Omit<EditableBMSNote, 'id'>) => void;
@@ -104,6 +114,14 @@ export interface NoteChartEditorProps {
   onScrollChange?: (beat: number) => void;
   /** Imperative scroll ref for smooth playback (read every frame in useFrame, bypasses React re-renders) */
   scrollBeatImperativeRef?: React.RefObject<number>;
+  /** 줌 컨트롤 imperative ref (zoomIn/zoomOut/zoomTo/fitToChart) */
+  zoomControlRef?: React.MutableRefObject<ZoomControl | null>;
+  /** 줌 배율 변경 콜백 (rAF 디바운스로 호출) */
+  onBeatScaleChange?: (scale: number) => void;
+
+  // 키음 하이라이트
+  /** 하이라이트할 키음 ID (해당 키음을 사용하는 노트가 주황색으로 표시) */
+  highlightKeysound?: string | null;
 
   // 상태 표시
   hasUnsavedChanges?: boolean;
@@ -145,4 +163,10 @@ export interface EditorToolbarProps {
   };
   onLayerVisibleToggle?: (layer: string) => void;
   onLayerLockToggle?: (layer: string) => void;
+  // Zoom
+  onZoomIn?: () => void;
+  onZoomOut?: () => void;
+  onZoomPreset?: (scale: number) => void;
+  onZoomFit?: () => void;
+  currentBeatScale?: number;
 }
