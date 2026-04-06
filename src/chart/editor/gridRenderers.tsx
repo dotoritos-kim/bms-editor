@@ -167,10 +167,10 @@ export const MeasureLinesRenderer = React.memo(function MeasureLinesRenderer({
         addLine(beatPos * beatScale, BEAT_LINE_COLOR);
       }
 
-      // 그리드선 (마디별 gridSnap override 지원)
+      // 그리드선 (마디별 gridSnap override 지원, 인덱스 기반으로 부동소수점 누적 오차 방지)
       const effectiveSnap = gridSnapOverrides?.get(measure) ?? gridSnap;
-      const gs = 4 / effectiveSnap;
-      for (let b = gs; b < beatsInMeasure; b += gs) {
+      for (let i = 1; i < effectiveSnap; i++) {
+        const b = (i * beatsInMeasure) / effectiveSnap;
         const beatPos = currentBeat + b;
         if (beatPos > maxBeat) break;
         const isOnBeat = Math.abs(b - Math.round(b)) < 0.001;
