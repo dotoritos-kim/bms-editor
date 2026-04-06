@@ -68,6 +68,15 @@ export const EditorToolbar = React.memo(function EditorToolbar({
   currentBeatScale,
 }: EditorToolbarProps) {
   const [showZoomPreset, setShowZoomPreset] = React.useState(false);
+  const zoomPresetRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!showZoomPreset) return;
+    const close = (e: MouseEvent) => {
+      if (!zoomPresetRef.current?.contains(e.target as Node)) setShowZoomPreset(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [showZoomPreset]);
 
   const tools: { id: EditorTool; icon: React.ReactNode; label: string; shortcut: string; description: string }[] = [
     { id: 'select', icon: <MousePointer2 size={16} />, label: '선택', shortcut: 'V', description: '클릭/드래그로 노트를 선택합니다. Shift+클릭으로 추가 선택.' },
@@ -219,12 +228,12 @@ export const EditorToolbar = React.memo(function EditorToolbar({
           <button
             onClick={onZoomOut}
             disabled={currentBeatScale !== undefined && currentBeatScale <= 2}
-            className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"
+            className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             title="축소 (-)"
           >
             <ZoomOut size={14} />
           </button>
-          <div className="relative">
+          <div className="relative" ref={zoomPresetRef}>
             <button
               onClick={() => setShowZoomPreset((v) => !v)}
               className="w-8 text-[10px] text-center text-muted-foreground hover:text-foreground px-1"
@@ -256,7 +265,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
           <button
             onClick={onZoomIn}
             disabled={currentBeatScale !== undefined && currentBeatScale >= 200}
-            className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30"
+            className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             title="확대 (=)"
           >
             <ZoomIn size={14} />
