@@ -37,6 +37,7 @@ export type {
   EditorTool,
   SelectedNoteType,
   GridSnap,
+  CustomNoteColors,
 } from './NoteChartEditor';
 
 // Editor Panels

@@ -18,7 +18,8 @@ import {
   MAX_ACTIVE_FLASH,
   NOTE_PADDING,
 } from './types';
-import { useNoteHeight, getLaneColorHex, getNoteColorHex, getBgmLaneId, isBgmLaneId, _dummy, _color } from './editorUtils';
+import type { CustomNoteColors } from './types';
+import { useNoteHeight, getLaneColorHex, getNoteColorHex, getSelectionColorHex, getBgmLaneId, isBgmLaneId, _dummy, _color } from './editorUtils';
 import { TextLabels } from './gridRenderers';
 
 /** 노트 렌더러 (InstancedMesh 기반, viewport culling + dirty check) */
@@ -35,6 +36,7 @@ export const NotesRenderer = React.memo(function NotesRenderer({
   highlightKeysound,
   wavDurations,
   baseBpm = 120,
+  customColors,
 }: {
   notes: EditableBMSNote[];
   lanes: LaneConfig[];
@@ -55,6 +57,8 @@ export const NotesRenderer = React.memo(function NotesRenderer({
   wavDurations?: Map<string, number>;
   /** BPM at start (for duration→beats conversion) */
   baseBpm?: number;
+  /** 커스텀 노트 색상 오버라이드 */
+  customColors?: CustomNoteColors;
 }) {
   const noteHeight = useNoteHeight();
   const notesMeshRef = useRef<THREE.InstancedMesh>(null);
@@ -150,7 +154,7 @@ export const NotesRenderer = React.memo(function NotesRenderer({
         note.keysound === highlightKeysound ||
         note.additionalKeysounds?.some((ak) => ak.keysound === highlightKeysound)
       );
-      const colorHex = getNoteColorHex(note, laneColorHex, false, isNoteHighlighted);
+      const colorHex = getNoteColorHex(note, laneColorHex, false, isNoteHighlighted, customColors);
       const layerOpacity = layerSettings?.opacity ?? 1.0;
 
       // 노트 본체
@@ -168,7 +172,7 @@ export const NotesRenderer = React.memo(function NotesRenderer({
         _dummy.scale.set(lane.width, noteHeight + 2, 1);
         _dummy.updateMatrix();
         selectionMesh.setMatrixAt(selectionCount, _dummy.matrix);
-        _color.setHex(0x00ffff);
+        _color.setHex(getSelectionColorHex(customColors));
         selectionMesh.setColorAt(selectionCount, _color);
         selectionCount++;
       }

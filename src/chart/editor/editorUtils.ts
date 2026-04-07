@@ -8,7 +8,7 @@ import React from 'react';
 import * as THREE from 'three';
 import type { EditableBMSNote } from '@rhythm-archive/bms-core';
 import { DEFAULT_NOTE_HEIGHT } from './types';
-import type { GridSnap } from './types';
+import type { GridSnap, CustomNoteColors } from './types';
 
 // 노트 높이 Context (하위 컴포넌트에서 참조)
 export const NoteHeightContext = React.createContext(DEFAULT_NOTE_HEIGHT);
@@ -68,27 +68,76 @@ export function getLaneColorHex(laneColor: string): { normal: number; invisible:
   return cached;
 }
 
+// CSS color string → hex number 캐시 (THREE.Color 파싱은 느리므로 캐시 필수)
+const _customColorCache = new Map<string, number>();
+function parseCustomColor(color: string): number | null {
+  if (_customColorCache.has(color)) return _customColorCache.get(color)!;
+  try {
+    const hex = new THREE.Color(color).getHex();
+    _customColorCache.set(color, hex);
+    return hex;
+  } catch {
+    return null;
+  }
+}
+
 // 노트 색상을 hex number로 변환 (캐시 사용, GC 압력 제거)
-// 우선순위: isSelected(cyan) > isHighlighted(주황) > noteType 기본
+// 우선순위: isSelected > isHighlighted > customColors > noteType 기본
 export function getNoteColorHex(
   note: EditableBMSNote,
   laneColorHex: { normal: number; invisible: number },
   isSelected: boolean,
-  isHighlighted: boolean = false
+  isHighlighted: boolean = false,
+  customColors?: CustomNoteColors
 ): number {
-  if (isSelected) return 0x00ffff;
+  if (isSelected) {
+    if (customColors?.selection) {
+      const hex = parseCustomColor(customColors.selection);
+      if (hex !== null) return hex;
+    }
+    return 0x00ffff;
+  }
   if (isHighlighted) return 0xffa500;
 
   switch (note.noteType) {
-    case 'invisible':
+    case 'invisible': {
+      if (customColors?.invisible) {
+        const hex = parseCustomColor(customColors.invisible);
+        if (hex !== null) return hex;
+      }
       return laneColorHex.invisible;
-    case 'landmine':
+    }
+    case 'landmine': {
+      if (customColors?.landmine) {
+        const hex = parseCustomColor(customColors.landmine);
+        if (hex !== null) return hex;
+      }
       return 0xff4444;
-    case 'bgm':
+    }
+    case 'bgm': {
+      if (customColors?.bgm) {
+        const hex = parseCustomColor(customColors.bgm);
+        if (hex !== null) return hex;
+      }
       return 0x666666;
-    default:
+    }
+    default: {
+      if (customColors?.playable) {
+        const hex = parseCustomColor(customColors.playable);
+        if (hex !== null) return hex;
+      }
       return laneColorHex.normal;
+    }
   }
+}
+
+/** 선택 하이라이트 색상 (customColors 오버라이드 지원) */
+export function getSelectionColorHex(customColors?: CustomNoteColors): number {
+  if (customColors?.selection) {
+    const hex = parseCustomColor(customColors.selection);
+    if (hex !== null) return hex;
+  }
+  return 0x00ffff;
 }
 
 // 재사용 가능한 오브젝트 (GC 압력 감소)

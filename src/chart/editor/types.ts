@@ -45,6 +45,22 @@ export interface ZoomControl {
   fitToChart: () => void;
 }
 
+/** 커스텀 노트 색상 오버라이드 (노트 타입별 CSS color string) */
+export interface CustomNoteColors {
+  /** 일반(플레이어블) 노트 색상 — 미지정 시 레인 색상 */
+  playable?: string;
+  /** 인비저블 노트 색상 */
+  invisible?: string;
+  /** 지뢰 노트 색상 */
+  landmine?: string;
+  /** BGM 노트 색상 */
+  bgm?: string;
+  /** 선택된 노트 하이라이트 색상 */
+  selection?: string;
+  /** 캔버스 배경 색상 */
+  background?: string;
+}
+
 export interface NoteChartEditorProps {
   /** 편집할 노트 배열 */
   notes: EditableBMSNote[];
@@ -128,6 +144,8 @@ export interface NoteChartEditorProps {
   branchName?: string;
   /** 노트 높이 (두께, 기본값 2) */
   noteHeight?: number;
+  /** 커스텀 노트 색상 오버라이드 */
+  customColors?: CustomNoteColors;
 }
 
 export interface EditorToolbarProps {

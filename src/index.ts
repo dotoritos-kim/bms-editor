@@ -12,7 +12,7 @@ export type { NoteChartViewerProps, KeyMode, NoteTypeFilter, ViewMode, BpmChange
 
 // Chart Editor
 export { NoteChartEditor, EditorToolbar, GRID_SNAP_OPTIONS } from './chart';
-export type { NoteChartEditorProps, EditorTool, SelectedNoteType, GridSnap } from './chart';
+export type { NoteChartEditorProps, EditorTool, SelectedNoteType, GridSnap, CustomNoteColors } from './chart';
 
 // Chart Diff
 export { BmsChartDiff } from './chart';

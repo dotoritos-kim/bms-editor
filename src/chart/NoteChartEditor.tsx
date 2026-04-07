@@ -42,7 +42,7 @@ import { NotesRenderer, HoverPreview, RubberBandRect, DragGhostNotes, NotePassEf
 // Re-exports for backwards compatibility
 export { EditorToolbar } from './editor/EditorToolbar';
 export { GRID_SNAP_OPTIONS } from './editor/types';
-export type { EditorTool, SelectedNoteType, GridSnap, NoteChartEditorProps, ZoomControl } from './editor/types';
+export type { EditorTool, SelectedNoteType, GridSnap, NoteChartEditorProps, ZoomControl, CustomNoteColors } from './editor/types';
 
 /** 에디터 캔버스 내부 컴포넌트 */
 function EditorCanvas({
@@ -83,6 +83,7 @@ function EditorCanvas({
   bgmChannelCount,
   zoomControlRef,
   onBeatScaleChange,
+  customColors,
 }: Omit<NoteChartEditorProps, 'height' | 'className' | 'hasUnsavedChanges' | 'branchName' | 'noteHeight'> & {
   coordConverterRef?: React.MutableRefObject<CoordConverter | null>;
   scrollBeatImperativeRef?: React.RefObject<number>;
@@ -654,7 +655,7 @@ function EditorCanvas({
       </mesh>
       <LanesRenderer lanes={lanes} totalHeight={totalHeight} keyMode={keyMode} />
       <MeasureLinesRenderer totalBeats={totalBeats} beatScale={beatScale} totalWidth={totalWidth} gridSnap={gridSnap} scrollBeat={scrollBeat} viewportBeats={size.height / beatScale} timeSignatures={timeSignatures} gridSnapOverrides={gridSnapOverrides} />
-      <NotesRenderer notes={notes} lanes={lanes} beatScale={beatScale} selectedNotes={selectedNotes} offsetX={offsetX} scrollBeat={scrollBeat} viewportBeats={size.height / beatScale} scrollBeatImperativeRef={scrollBeatImperativeRef} layerConfig={layerConfig} highlightKeysound={highlightKeysound} />
+      <NotesRenderer notes={notes} lanes={lanes} beatScale={beatScale} selectedNotes={selectedNotes} offsetX={offsetX} scrollBeat={scrollBeat} viewportBeats={size.height / beatScale} scrollBeatImperativeRef={scrollBeatImperativeRef} layerConfig={layerConfig} highlightKeysound={highlightKeysound} customColors={customColors} />
       {activeTool === 'addNote' && !lnDragCreate && hoverPosition && (
         <HoverPreview beat={hoverPosition.beat} column={hoverPosition.column} lanes={lanes} beatScale={beatScale} offsetX={offsetX} isSilent={currentKeysound === '00'} isLongNote={selectedNoteType === 'longNote'} />
       )}
@@ -710,6 +711,7 @@ export const NoteChartEditor = React.memo(function NoteChartEditor({
   scrollToBeat, onScrollChange, scrollBeatImperativeRef,
   noteHeight: noteHeightProp = DEFAULT_NOTE_HEIGHT,
   zoomControlRef, onBeatScaleChange,
+  customColors,
 }: NoteChartEditorProps) {
   const coordConverterRef = useRef<CoordConverter | null>(null);
 
@@ -752,7 +754,7 @@ export const NoteChartEditor = React.memo(function NoteChartEditor({
         resize={{ debounce: 16 }}
       >
         <NoteHeightContext.Provider value={noteHeightProp}>
-        <color attach="background" args={['#0a0a1a']} />
+        <color attach="background" args={[customColors?.background ?? '#0a0a1a']} />
         <EditorCanvas
           notes={notes} keyMode={keyMode} totalBeats={totalBeats} beatScale={beatScale}
           activeTool={activeTool} gridSnap={gridSnap} snapEnabled={snapEnabled} gridSnapOverrides={gridSnapOverrides} layerConfig={layerConfig} selectedNotes={selectedNotes}
@@ -768,6 +770,7 @@ export const NoteChartEditor = React.memo(function NoteChartEditor({
           scrollToBeat={scrollToBeat} onScrollChange={onScrollChange}
           coordConverterRef={coordConverterRef} scrollBeatImperativeRef={scrollBeatImperativeRef}
           zoomControlRef={zoomControlRef} onBeatScaleChange={onBeatScaleChange}
+          customColors={customColors}
         />
         </NoteHeightContext.Provider>
       </Canvas>
