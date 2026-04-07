@@ -496,6 +496,7 @@ function EditorCanvas({
             const bgmChannel = isBgmLaneId(column) ? bgmLaneIdToChannel(column) : undefined;
             onNoteAdd({
               beat, measure: 0, fraction: 0,
+              tick: Math.round(beat * 960),
               column: isBgm ? undefined : column,
               keysound: currentKeysound,
               noteType,
@@ -559,6 +560,8 @@ function EditorCanvas({
         const finalEndBeat = Math.max(currentEndBeat, minEnd);
         onNoteAdd({
           beat: startBeat, measure: 0, fraction: 0,
+          tick: Math.round(startBeat * 960),
+          endTick: Math.round(finalEndBeat * 960),
           column: lnColumn,
           keysound: currentKeysound,
           noteType: 'playable',
