@@ -62,6 +62,8 @@ interface MinimapProps {
   densityData?: MinimapDensityEntry[];
   /** Optional bookmark markers */
   bookmarks?: MinimapBookmark[];
+  /** Hide the internal "Minimap" header label (e.g. when shown in a popout with its own title) */
+  hideHeader?: boolean;
 }
 
 export const Minimap = React.memo(function Minimap({
@@ -73,6 +75,7 @@ export const Minimap = React.memo(function Minimap({
   className,
   densityData,
   bookmarks,
+  hideHeader,
 }: MinimapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -333,9 +336,11 @@ export const Minimap = React.memo(function Minimap({
 
   return (
     <div className={cn('flex flex-col h-full', className)}>
-      <div className="px-2 py-1 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider border-b border-zinc-800 shrink-0">
-        Minimap
-      </div>
+      {!hideHeader && (
+        <div className="px-2 py-1 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider border-b border-zinc-800 shrink-0">
+          Minimap
+        </div>
+      )}
       <div ref={containerRef} className="flex-1 min-h-0 overflow-hidden">
         <canvas
           ref={canvasRef}

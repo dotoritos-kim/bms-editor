@@ -42,6 +42,7 @@ export { HeaderEditorPanel } from './chart/panels/HeaderEditorPanel';
 export { KeysoundPanel } from './chart/panels/KeysoundPanel';
 export { KeysoundUploadDialog } from './chart/panels/KeysoundUploadDialog';
 export { Minimap } from './chart/panels/Minimap';
+export type { MinimapDensityEntry, MinimapBookmark } from './chart/panels/Minimap';
 export { NoteInfoPanel } from './chart/panels/NoteInfoPanel';
 export { NoteSearchDialog } from './chart/panels/NoteSearchDialog';
 export { StatusBar } from './chart/panels/StatusBar';

@@ -165,15 +165,26 @@ export function detectKeyMode(notes: BMSNote[], headers?: { get: (key: string) =
       return '10K';
     }
 
-    // Keyboard DP 스타일 (SC 없음): 컬럼 번호로 판단
+    // Keyboard DP 스타일 (SC 없음): 컬럼 번호 + 실제 사용 컬럼 수로 판단
+    const usedNumericColumns = Array.from(usedColumns).filter(col => /^\d+$/.test(col));
+    const numericCount = usedNumericColumns.length;
+
     // 48K: keyboard DP (24 keys each side)
     if (maxNumericColumn >= 24) return '48K';
 
     // 24K: keyboard DP (columns up to 24, 12 per side)
     if (maxNumericColumn >= 18) return '24K';
 
-    // 18K: keyboard DP (9 keys each side, no scratch)
-    if (maxNumericColumn >= 10) return '18K';
+    if (maxNumericColumn >= 10) {
+      // IIDX DP gap 패턴 감지: 컬럼 6, 7이 빠져 있으면 IIDX DP 스타일
+      // (IIDX DP에서 1P=1-5, 2P=8-12, 컬럼 6,7은 7K에서만 사용)
+      const hasCol6or7 = usedColumns.has('6') || usedColumns.has('7');
+      if (!hasCol6or7 && numericCount <= 10) return '10K';
+
+      // 실제 사용 컬럼 수 기반 판단
+      if (numericCount <= 12) return '12K';
+      return '18K';
+    }
 
     // 12K: keyboard 6 keys each side (no scratch)
     return '12K';

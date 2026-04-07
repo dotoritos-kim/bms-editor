@@ -5,19 +5,117 @@
  */
 
 import React, { useEffect, useMemo, useRef } from 'react';
-import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 import type { BMSBpmChange, BMSStopEvent } from '@rhythm-archive/bms-core';
 import type { KeyMode } from '../NoteChartViewer';
 import { getLaneBackground, getDpSplitIndex, type LaneConfig } from '../laneConfig';
 import type { GridSnap } from './types';
+import { _dummy, _color } from './editorUtils';
 
 // 마디선 색상 상수
 const MEASURE_LINE_COLOR = new THREE.Color('#6666aa');
 const BEAT_LINE_COLOR = new THREE.Color('#444466');
 const GRID_LINE_COLOR = new THREE.Color('#2a2a44');
 
-/** 레인 배경 렌더러 (batched dividers → single LineSegments) */
+/**
+ * Individual text labels rendered as separate sprites with correct proportions.
+ * Each label gets its own small CanvasTexture so aspect ratio is always correct.
+ */
+const LABEL_FONT_PX = 20;
+const LABEL_WORLD_HEIGHT = 6; // world units height per label
+
+const _labelGeometry = new THREE.PlaneGeometry(1, 1);
+const _labelMaterialCache = new Map<string, THREE.MeshBasicMaterial>();
+
+function _getOrCreateLabelMaterial(text: string, color: string): { material: THREE.MeshBasicMaterial; aspect: number } {
+  const key = `${text}\0${color}`;
+  const cached = _labelMaterialCache.get(key);
+  if (cached) return { material: cached, aspect: (cached.map as THREE.CanvasTexture).image.width / (cached.map as THREE.CanvasTexture).image.height };
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d')!;
+  ctx.font = `bold ${LABEL_FONT_PX}px monospace`;
+  const metrics = ctx.measureText(text);
+  const pad = 4;
+  const w = Math.ceil(metrics.width) + pad * 2;
+  const h = LABEL_FONT_PX + pad * 2;
+  canvas.width = w;
+  canvas.height = h;
+  ctx.font = `bold ${LABEL_FONT_PX}px monospace`;
+  ctx.fillStyle = color;
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, pad, h / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+
+  const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false });
+  _labelMaterialCache.set(key, material);
+  return { material, aspect: w / h };
+}
+
+export const TextLabels = React.memo(function TextLabels({
+  labels,
+  x,
+  z,
+  color,
+  align,
+  worldHeight = LABEL_WORLD_HEIGHT,
+}: {
+  labels: { y: number; text: string }[];
+  x: number;
+  z: number;
+  color: string;
+  align: 'left' | 'right';
+  worldHeight?: number;
+}) {
+  if (labels.length === 0) return null;
+  return (
+    <>
+      {labels.map((label, i) => {
+        const { material, aspect } = _getOrCreateLabelMaterial(label.text, color);
+        const worldW = worldHeight * aspect;
+        const offsetX = align === 'left' ? worldW / 2 : -worldW / 2;
+        return (
+          <mesh
+            key={`${label.text}-${label.y}`}
+            position={[x + offsetX, label.y, z]}
+            scale={[worldW, worldHeight, 1]}
+            geometry={_labelGeometry}
+            material={material}
+            frustumCulled={false}
+          />
+        );
+      })}
+    </>
+  );
+});
+
+/** @deprecated Use TextLabels instead */
+export const TextBatchStrip = React.memo(function TextBatchStrip({
+  labels,
+  x,
+  z,
+  color,
+  align,
+  stripWidth = 60,
+}: {
+  labels: { y: number; text: string }[];
+  x: number;
+  z: number;
+  minY: number;
+  maxY: number;
+  color: string;
+  align: 'left' | 'right';
+  stripWidth?: number;
+}) {
+  return <TextLabels labels={labels} x={x} z={z} color={color} align={align} worldHeight={LABEL_WORLD_HEIGHT} />;
+});
+
+/** 레인 배경 렌더러 (InstancedMesh 1 draw call + batched dividers LineSegments) */
+const MAX_LANE_INSTANCES = 50;
+
 export const LanesRenderer = React.memo(function LanesRenderer({
   lanes,
   totalHeight,
@@ -29,6 +127,7 @@ export const LanesRenderer = React.memo(function LanesRenderer({
 }) {
   const totalWidth = (() => { const last = lanes[lanes.length - 1]; return last ? last.x + last.width : 0; })();
   const offsetX = -totalWidth / 2;
+  const laneMeshRef = useRef<THREE.InstancedMesh>(null);
   const dividerGeomRef = useRef<THREE.BufferGeometry>(null);
   const dpSplitIndex = keyMode ? getDpSplitIndex(keyMode) : null;
 
@@ -37,6 +136,25 @@ export const LanesRenderer = React.memo(function LanesRenderer({
     [lanes]
   );
 
+  // Lane backgrounds → single InstancedMesh
+  useEffect(() => {
+    const mesh = laneMeshRef.current;
+    if (!mesh) return;
+    for (let i = 0; i < lanes.length; i++) {
+      const lane = lanes[i];
+      _dummy.position.set(offsetX + lane.x + lane.width / 2, totalHeight / 2, -5);
+      _dummy.scale.set(lane.width, totalHeight, 1);
+      _dummy.updateMatrix();
+      mesh.setMatrixAt(i, _dummy.matrix);
+      _color.set(laneBackgrounds[i]);
+      mesh.setColorAt(i, _color);
+    }
+    mesh.count = lanes.length;
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }, [lanes, totalHeight, offsetX, laneBackgrounds]);
+
+  // Lane dividers → batched LineSegments
   useEffect(() => {
     const geometry = dividerGeomRef.current;
     if (!geometry) return;
@@ -51,19 +169,14 @@ export const LanesRenderer = React.memo(function LanesRenderer({
 
   return (
     <group>
-      {lanes.map((lane, i) => (
-        <mesh
-          key={lane.id}
-          position={[
-            offsetX + lane.x + lane.width / 2,
-            totalHeight / 2,
-            -5,
-          ]}
-        >
-          <planeGeometry args={[lane.width, totalHeight]} />
-          <meshBasicMaterial color={laneBackgrounds[i]} />
-        </mesh>
-      ))}
+      <instancedMesh
+        ref={laneMeshRef}
+        args={[undefined, undefined, MAX_LANE_INSTANCES]}
+        frustumCulled={false}
+      >
+        <planeGeometry args={[1, 1]} />
+        <meshBasicMaterial />
+      </instancedMesh>
       <lineSegments frustumCulled={false}>
         <bufferGeometry ref={dividerGeomRef} />
         <lineBasicMaterial color="#333366" />
@@ -196,19 +309,26 @@ export const MeasureLinesRenderer = React.memo(function MeasureLinesRenderer({
   // 마디 번호 - viewport 내만 (박자표 인식)
   const measureLabels = useMemo(() => {
     const labels: { y: number; label: string }[] = [];
+    // 저줌 시 draw call 감소: viewport에 최대 ~16개 레이블만 표시
+    const labelStep = Math.max(1, Math.ceil(viewportBeats / 16));
     let beat = 0;
     let m = 0;
     while (beat <= maxBeat && m < 9999) {
       const size = timeSignatures?.get(m) ?? 1.0;
       const beatsInMeasure = 4 * size;
-      if (beat >= minBeat) {
+      if (beat >= minBeat && m % labelStep === 0) {
         labels.push({ y: beat * beatScale, label: `#${String(m).padStart(3, '0')}` });
       }
       beat += beatsInMeasure;
       m++;
     }
     return labels;
-  }, [beatScale, minBeat, maxBeat, timeSignatures]);
+  }, [beatScale, minBeat, maxBeat, timeSignatures, viewportBeats]);
+
+  const textLabels = useMemo(
+    () => measureLabels.map((l) => ({ y: l.y + 8, text: l.label })),
+    [measureLabels]
+  );
 
   return (
     <group>
@@ -216,19 +336,13 @@ export const MeasureLinesRenderer = React.memo(function MeasureLinesRenderer({
         <bufferGeometry ref={geometryRef} />
         <lineBasicMaterial vertexColors />
       </lineSegments>
-      {measureLabels.map(({ y, label }) => (
-        <Text
-          key={label}
-          position={[-halfWidth - 30, y + 8, -3]}
-          fontSize={10}
-          color="#8888cc"
-          anchorX="right"
-          anchorY="middle"
-          font={undefined}
-        >
-          {label}
-        </Text>
-      ))}
+      <TextLabels
+        labels={textLabels}
+        x={-halfWidth - 4}
+        z={-3}
+        color="#8888cc"
+        align="right"
+      />
     </group>
   );
 });
@@ -274,25 +388,24 @@ export const BpmMarkersRenderer = React.memo(function BpmMarkersRenderer({
       .filter((l) => l.beat >= minBeat && l.beat <= maxBeat);
   }, [bpmChanges, beatScale, minBeat, maxBeat]);
 
+  const bpmTextLabels = useMemo(
+    () => visibleLabels.map((l) => ({ y: l.y, text: `BPM ${l.bpm}` })),
+    [visibleLabels]
+  );
+
   return (
     <group>
       <lineSegments frustumCulled={false}>
         <bufferGeometry ref={geometryRef} />
         <lineBasicMaterial color="#ff6600" />
       </lineSegments>
-      {visibleLabels.map((l, i) => (
-        <Text
-          key={i}
-          position={[halfWidth + 30, l.y, 5]}
-          fontSize={10}
-          color="#ff6600"
-          anchorX="left"
-          anchorY="middle"
-          font={undefined}
-        >
-          BPM {l.bpm}
-        </Text>
-      ))}
+      <TextLabels
+        labels={bpmTextLabels}
+        x={halfWidth + 4}
+        z={5}
+        color="#ff6600"
+        align="left"
+      />
     </group>
   );
 });
@@ -339,25 +452,24 @@ export const StopMarkersRenderer = React.memo(function StopMarkersRenderer({
       .filter((l) => l.beat >= minBeat && l.beat <= maxBeat);
   }, [stopEvents, beatScale, minBeat, maxBeat]);
 
+  const stopTextLabels = useMemo(
+    () => visibleLabels.map((l) => ({ y: l.y, text: l.label })),
+    [visibleLabels]
+  );
+
   return (
     <group>
       <lineSegments frustumCulled={false}>
         <bufferGeometry ref={geometryRef} />
         <lineBasicMaterial color="#cc33ff" />
       </lineSegments>
-      {visibleLabels.map((l, i) => (
-        <Text
-          key={i}
-          position={[halfWidth + 30, l.y, 5]}
-          fontSize={10}
-          color="#cc33ff"
-          anchorX="left"
-          anchorY="middle"
-          font={undefined}
-        >
-          {l.label}
-        </Text>
-      ))}
+      <TextLabels
+        labels={stopTextLabels}
+        x={halfWidth + 4}
+        z={5}
+        color="#cc33ff"
+        align="left"
+      />
     </group>
   );
 });

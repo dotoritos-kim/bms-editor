@@ -18,7 +18,8 @@ import {
   MAX_ACTIVE_FLASH,
   NOTE_PADDING,
 } from './types';
-import { useNoteHeight, getLaneColorHex, getNoteColorHex, _dummy, _color } from './editorUtils';
+import { useNoteHeight, getLaneColorHex, getNoteColorHex, getBgmLaneId, isBgmLaneId, _dummy, _color } from './editorUtils';
+import { TextLabels } from './gridRenderers';
 
 /** 노트 렌더러 (InstancedMesh 기반, viewport culling + dirty check) */
 export const NotesRenderer = React.memo(function NotesRenderer({
@@ -31,6 +32,9 @@ export const NotesRenderer = React.memo(function NotesRenderer({
   viewportBeats,
   scrollBeatImperativeRef,
   layerConfig,
+  highlightKeysound,
+  wavDurations,
+  baseBpm = 120,
 }: {
   notes: EditableBMSNote[];
   lanes: LaneConfig[];
@@ -46,6 +50,11 @@ export const NotesRenderer = React.memo(function NotesRenderer({
     landmine: { visible: boolean; locked: boolean; opacity: number };
     bgm: { visible: boolean; locked: boolean; opacity: number };
   };
+  highlightKeysound?: string | null;
+  /** WAV duration (keysoundId → seconds) for BGM tail visualization */
+  wavDurations?: Map<string, number>;
+  /** BPM at start (for duration→beats conversion) */
+  baseBpm?: number;
 }) {
   const noteHeight = useNoteHeight();
   const notesMeshRef = useRef<THREE.InstancedMesh>(null);
@@ -53,10 +62,17 @@ export const NotesRenderer = React.memo(function NotesRenderer({
   const longNoteMeshRef = useRef<THREE.InstancedMesh>(null);
   const layerMarkerMeshRef = useRef<THREE.InstancedMesh>(null);
   const activeFlashMeshRef = useRef<THREE.InstancedMesh>(null);
+  const bgmTailMeshRef = useRef<THREE.InstancedMesh>(null);
 
   const laneMap = useMemo(
     () => new Map(lanes.map((lane) => [lane.id, lane])),
     [lanes]
+  );
+
+  // beat 오름차순 정렬 — notes 참조가 바뀔 때만 재정렬 (O(N log N) once → O(log N) per frame)
+  const sortedNotes = useMemo(
+    () => [...notes].sort((a, b) => a.beat - b.beat),
+    [notes]
   );
 
   const prevDataRef = useRef<{
@@ -65,7 +81,8 @@ export const NotesRenderer = React.memo(function NotesRenderer({
     beatScale: number;
     scrollBeat: number;
     viewportBeats: number;
-  }>({ notes: [], selectedNotes: new Set(), beatScale: 0, scrollBeat: -1, viewportBeats: 0 });
+    highlightKeysound: string | null | undefined;
+  }>({ notes: [], selectedNotes: new Set(), beatScale: 0, scrollBeat: -1, viewportBeats: 0, highlightKeysound: undefined });
 
   useFrame(() => {
     const notesMesh = notesMeshRef.current;
@@ -83,11 +100,12 @@ export const NotesRenderer = React.memo(function NotesRenderer({
       prev.selectedNotes === selectedNotes &&
       prev.beatScale === beatScale &&
       Math.abs(prev.scrollBeat - scrollBeat) < 0.01 &&
-      prev.viewportBeats === viewportBeats
+      prev.viewportBeats === viewportBeats &&
+      prev.highlightKeysound === highlightKeysound
     ) {
       return;
     }
-    prevDataRef.current = { notes, selectedNotes, beatScale, scrollBeat, viewportBeats };
+    prevDataRef.current = { notes, selectedNotes, beatScale, scrollBeat, viewportBeats, highlightKeysound };
     const playBeat = scrollBeatImperativeRef?.current;
 
     const buffer = viewportBeats * 0.5;
@@ -100,7 +118,17 @@ export const NotesRenderer = React.memo(function NotesRenderer({
     let layerMarkerCount = 0;
     let activeFlashCount = 0;
 
-    for (const note of notes) {
+    // 이진탐색으로 viewport 범위만 순회 (LN은 최대 64 beat 룩백으로 커버)
+    const LN_LOOK_BACK = 64;
+    let lo = 0, hi = sortedNotes.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (sortedNotes[mid].beat < minBeat - LN_LOOK_BACK) lo = mid + 1; else hi = mid; }
+    const noteStartIdx = lo;
+    lo = noteStartIdx; hi = sortedNotes.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (sortedNotes[mid].beat <= maxBeat) lo = mid + 1; else hi = mid; }
+    const noteEndIdx = lo;
+
+    for (let ni = noteStartIdx; ni < noteEndIdx; ni++) {
+      const note = sortedNotes[ni];
       if (noteCount >= MAX_VISIBLE_EDITOR_NOTES) break;
 
       // Layer visibility filter
@@ -109,16 +137,20 @@ export const NotesRenderer = React.memo(function NotesRenderer({
       if (layerSettings && !layerSettings.visible) continue;
 
       const noteMaxBeat = note.endBeat ?? note.beat;
-      if (noteMaxBeat < minBeat || note.beat > maxBeat) continue;
+      if (noteMaxBeat < minBeat) continue; // LN이 룩백 구간 시작 전에 끝난 경우
 
-      const laneId = note.noteType === 'bgm' ? 'BGM' : (note.column || '');
+      const laneId = note.noteType === 'bgm' ? getBgmLaneId(note) : (note.column || '');
       const lane = laneMap.get(laneId);
       if (!lane) continue;
 
       const x = offsetX + lane.x + lane.width / 2;
       const y = note.beat * beatScale + noteHeight / 2;
       const laneColorHex = getLaneColorHex(lane.color);
-      const colorHex = getNoteColorHex(note, laneColorHex, false);
+      const isNoteHighlighted = !!highlightKeysound && (
+        note.keysound === highlightKeysound ||
+        note.additionalKeysounds?.some((ak) => ak.keysound === highlightKeysound)
+      );
+      const colorHex = getNoteColorHex(note, laneColorHex, false, isNoteHighlighted);
       const layerOpacity = layerSettings?.opacity ?? 1.0;
 
       // 노트 본체
@@ -221,6 +253,54 @@ export const NotesRenderer = React.memo(function NotesRenderer({
       activeFlashMesh.instanceMatrix.needsUpdate = true;
       if (activeFlashMesh.instanceColor) activeFlashMesh.instanceColor.needsUpdate = true;
     }
+
+    // BGM duration tails
+    const bgmTailMesh = bgmTailMeshRef.current;
+    if (bgmTailMesh && wavDurations && wavDurations.size > 0) {
+      let tailCount = 0;
+      const MAX_TAILS = 200;
+      // BGM tail 이진탐색 (WAV duration 룩백 20 beat)
+      const BGM_LOOK_BACK = 20;
+      let bgmLo = 0, bgmHi = sortedNotes.length;
+      while (bgmLo < bgmHi) { const mid = (bgmLo + bgmHi) >> 1; if (sortedNotes[mid].beat < minBeat - BGM_LOOK_BACK) bgmLo = mid + 1; else bgmHi = mid; }
+      const bgmStartIdx = bgmLo;
+      bgmLo = bgmStartIdx; bgmHi = sortedNotes.length;
+      while (bgmLo < bgmHi) { const mid = (bgmLo + bgmHi) >> 1; if (sortedNotes[mid].beat <= maxBeat) bgmLo = mid + 1; else bgmHi = mid; }
+      const bgmEndIdx = bgmLo;
+      for (let bi = bgmStartIdx; bi < bgmEndIdx; bi++) {
+        const note = sortedNotes[bi];
+        if (tailCount >= MAX_TAILS) break;
+        if (note.noteType !== 'bgm') continue;
+        const dur = wavDurations.get(note.keysound);
+        if (!dur || dur <= 0) continue;
+
+        const laneId = getBgmLaneId(note);
+        const lane = laneMap.get(laneId);
+        if (!lane) continue;
+
+        // Convert seconds to beats using baseBpm
+        const durationBeats = (dur / 60) * baseBpm;
+        const startY = note.beat * beatScale + noteHeight / 2;
+        const endY = (note.beat + durationBeats) * beatScale + noteHeight / 2;
+        const tailHeight = endY - startY;
+        const centerY = (startY + endY) / 2;
+        const x = offsetX + lane.x + lane.width / 2;
+
+        _dummy.position.set(x, centerY, -1);
+        _dummy.scale.set(lane.width - NOTE_PADDING * 2 - 2, tailHeight, 1);
+        _dummy.updateMatrix();
+        bgmTailMesh.setMatrixAt(tailCount, _dummy.matrix);
+        _color.setHex(0x666666);
+        bgmTailMesh.setColorAt(tailCount, _color);
+        tailCount++;
+      }
+      bgmTailMesh.count = tailCount;
+      bgmTailMesh.instanceMatrix.needsUpdate = true;
+      if (bgmTailMesh.instanceColor) bgmTailMesh.instanceColor.needsUpdate = true;
+    } else if (bgmTailMesh) {
+      bgmTailMesh.count = 0;
+      bgmTailMesh.instanceMatrix.needsUpdate = true;
+    }
   });
 
   // 초기화: 기본 색상 설정
@@ -231,6 +311,7 @@ export const NotesRenderer = React.memo(function NotesRenderer({
       [longNoteMeshRef, MAX_VISIBLE_LONGNOTE_BODIES],
       [layerMarkerMeshRef, MAX_VISIBLE_LAYER_MARKERS],
       [activeFlashMeshRef, MAX_ACTIVE_FLASH],
+      [bgmTailMeshRef, 200],
     ];
     for (const [ref, max] of meshConfigs) {
       const mesh = ref.current;
@@ -289,7 +370,112 @@ export const NotesRenderer = React.memo(function NotesRenderer({
         <planeGeometry args={[1, 1]} />
         <meshBasicMaterial transparent opacity={0.7} blending={THREE.AdditiveBlending} />
       </instancedMesh>
+
+      <instancedMesh
+        ref={bgmTailMeshRef}
+        args={[undefined, undefined, 200]}
+        frustumCulled={false}
+      >
+        <planeGeometry args={[1, 1]} />
+        <meshBasicMaterial transparent opacity={0.15} />
+      </instancedMesh>
+
+      {/* BGM WAV ID labels */}
+      <BgmLabels
+        notes={notes}
+        lanes={lanes}
+        beatScale={beatScale}
+        scrollBeat={scrollBeat}
+        viewportBeats={viewportBeats}
+        offsetX={offsetX}
+        layerConfig={layerConfig}
+      />
     </group>
+  );
+});
+
+/** BGM 노트에 WAV ID 텍스트 라벨을 표시하는 서브 컴포넌트 */
+const BgmLabels = React.memo(function BgmLabels({
+  notes,
+  lanes,
+  beatScale,
+  scrollBeat,
+  viewportBeats,
+  offsetX,
+  layerConfig,
+}: {
+  notes: EditableBMSNote[];
+  lanes: LaneConfig[];
+  beatScale: number;
+  scrollBeat: number;
+  viewportBeats: number;
+  offsetX: number;
+  layerConfig?: {
+    bgm: { visible: boolean; locked: boolean; opacity: number };
+    [key: string]: { visible: boolean; locked: boolean; opacity: number };
+  };
+}) {
+  const bgmVisible = layerConfig?.bgm?.visible ?? true;
+  const bgmLanes = useMemo(() => lanes.filter((l) => l.isBgm), [lanes]);
+
+  const labels = useMemo(() => {
+    if (!bgmVisible || bgmLanes.length === 0) return [];
+    // 저줌 시 레이블이 읽기 불가하고 draw call만 증가 → 숨김
+    if (beatScale < 15) return [];
+
+    const MAX_LABELS = 50;
+    const buffer = viewportBeats * 0.5;
+    const minBeat = scrollBeat - buffer;
+    const maxBeat = scrollBeat + viewportBeats + buffer;
+
+    const result: { y: number; text: string; laneId: string }[] = [];
+    for (const note of notes) {
+      if (result.length >= MAX_LABELS) break;
+      if (note.noteType !== 'bgm') continue;
+      if (note.beat < minBeat || note.beat > maxBeat) continue;
+      const laneId = getBgmLaneId(note);
+      const lane = bgmLanes.find((l) => l.id === laneId);
+      if (!lane) continue;
+      result.push({
+        y: note.beat * beatScale,
+        text: note.keysound,
+        laneId,
+      });
+    }
+    return result;
+  }, [notes, bgmLanes, bgmVisible, beatScale, scrollBeat, viewportBeats]);
+
+  // byLane을 useMemo로 메모이제이션 — labels가 바뀌지 않으면 TextLabels가 재렌더링하지 않음
+  const byLane = useMemo(() => {
+    const map = new Map<string, { y: number; text: string }[]>();
+    for (const l of labels) {
+      const arr = map.get(l.laneId);
+      if (arr) arr.push({ y: l.y, text: l.text });
+      else map.set(l.laneId, [{ y: l.y, text: l.text }]);
+    }
+    return map;
+  }, [labels]);
+
+  if (labels.length === 0) return null;
+
+  return (
+    <>
+      {bgmLanes.map((lane) => {
+        const laneLabels = byLane.get(lane.id);
+        if (!laneLabels || laneLabels.length === 0) return null;
+        return (
+          <TextLabels
+            key={lane.id}
+            labels={laneLabels}
+            x={offsetX + lane.x + lane.width / 2}
+            z={2}
+            color="#cccccc"
+            align="left"
+            worldHeight={8}
+          />
+        );
+      })}
+    </>
   );
 });
 
@@ -313,11 +499,14 @@ export const HoverPreview = React.memo(function HoverPreview({
 }) {
   const noteHeight = useNoteHeight();
   const lane = lanes.find((l) => l.id === column);
+  // hooks는 early return 전에 모두 선언 (rules of hooks)
+  const w = (lane?.width ?? 0) - NOTE_PADDING * 2;
+  const silentEdgeGeom = useMemo(() => new THREE.PlaneGeometry(w, noteHeight), [w, noteHeight]);
+
   if (!lane) return null;
 
   const x = offsetX + lane.x + lane.width / 2;
   const y = beat * beatScale + noteHeight / 2;
-  const w = lane.width - NOTE_PADDING * 2;
 
   if (isSilent) {
     return (
@@ -327,7 +516,7 @@ export const HoverPreview = React.memo(function HoverPreview({
           <meshBasicMaterial color="#888888" transparent opacity={0.25} />
         </mesh>
         <lineSegments>
-          <edgesGeometry args={[new THREE.PlaneGeometry(w, noteHeight)]} />
+          <edgesGeometry args={[silentEdgeGeom]} />
           <lineBasicMaterial color="#aaaaaa" transparent opacity={0.6} />
         </lineSegments>
       </group>
@@ -391,7 +580,10 @@ export const RubberBandRect = React.memo(function RubberBandRect({
   );
 });
 
-/** 드래그 이동 시 고스트 노트 미리보기 */
+/** 드래그 이동 시 고스트 노트 미리보기 (InstancedMesh 기반, 3 draw calls) */
+const MAX_GHOST_NOTES = 500;
+const MAX_GHOST_LN_BODIES = 500;
+
 export const DragGhostNotes = React.memo(function DragGhostNotes({
   notes,
   selectedNotes,
@@ -410,53 +602,107 @@ export const DragGhostNotes = React.memo(function DragGhostNotes({
   columnDelta: number;
 }) {
   const noteHeight = useNoteHeight();
+  const ghostMeshRef = useRef<THREE.InstancedMesh>(null);
+  const ghostLnBodyMeshRef = useRef<THREE.InstancedMesh>(null);
+  const ghostLnCapMeshRef = useRef<THREE.InstancedMesh>(null);
+
   const ghostNotes = useMemo(() => {
     return notes.filter((n) => selectedNotes.has(n.id));
   }, [notes, selectedNotes]);
 
+  useFrame(() => {
+    const ghostMesh = ghostMeshRef.current;
+    const ghostLnBody = ghostLnBodyMeshRef.current;
+    const ghostLnCap = ghostLnCapMeshRef.current;
+    if (!ghostMesh || !ghostLnBody || !ghostLnCap) return;
+
+    let noteCount = 0;
+    let lnBodyCount = 0;
+    let lnCapCount = 0;
+
+    for (const note of ghostNotes) {
+      if (noteCount >= MAX_GHOST_NOTES) break;
+
+      const noteLaneId = note.noteType === 'bgm' ? getBgmLaneId(note) : note.column;
+      const currentLaneIdx = lanes.findIndex((l) => l.id === noteLaneId);
+      const targetLaneIdx = Math.max(0, Math.min(lanes.length - 1, currentLaneIdx + columnDelta));
+      const targetLane = lanes[targetLaneIdx];
+      if (!targetLane) continue;
+
+      const x = offsetX + targetLane.x + targetLane.width / 2;
+      const y = (note.beat + beatDelta) * beatScale + noteHeight / 2;
+      const laneWidth = targetLane.width - NOTE_PADDING * 2;
+
+      // Ghost note body
+      _dummy.position.set(x, y, 3);
+      _dummy.scale.set(laneWidth, noteHeight, 1);
+      _dummy.updateMatrix();
+      ghostMesh.setMatrixAt(noteCount, _dummy.matrix);
+      noteCount++;
+
+      // Long note body + end cap
+      if (note.endBeat !== undefined && lnBodyCount < MAX_GHOST_LN_BODIES) {
+        const endY = (note.endBeat! + beatDelta) * beatScale + noteHeight / 2;
+        const bodyY = (y + endY) / 2;
+        const bodyHeight = Math.abs(endY - y);
+
+        _dummy.position.set(x, bodyY, 2);
+        _dummy.scale.set(laneWidth, bodyHeight, 1);
+        _dummy.updateMatrix();
+        ghostLnBody.setMatrixAt(lnBodyCount, _dummy.matrix);
+        lnBodyCount++;
+
+        if (lnCapCount < MAX_GHOST_LN_BODIES) {
+          _dummy.position.set(x, endY, 3);
+          _dummy.scale.set(laneWidth, noteHeight, 1);
+          _dummy.updateMatrix();
+          ghostLnCap.setMatrixAt(lnCapCount, _dummy.matrix);
+          lnCapCount++;
+        }
+      }
+    }
+
+    ghostMesh.count = noteCount;
+    ghostMesh.instanceMatrix.needsUpdate = true;
+
+    ghostLnBody.count = lnBodyCount;
+    ghostLnBody.instanceMatrix.needsUpdate = true;
+
+    ghostLnCap.count = lnCapCount;
+    ghostLnCap.instanceMatrix.needsUpdate = true;
+  });
+
   return (
     <group>
-      {ghostNotes.map((note) => {
-        const currentLaneIdx = lanes.findIndex((l) => l.id === note.column);
-        const targetLaneIdx = Math.max(0, Math.min(lanes.length - 1, currentLaneIdx + columnDelta));
-        const targetLane = lanes[targetLaneIdx];
-        if (!targetLane) return null;
-
-        const x = offsetX + targetLane.x + targetLane.width / 2;
-        const y = (note.beat + beatDelta) * beatScale + noteHeight / 2;
-        const laneWidth = targetLane.width - NOTE_PADDING * 2;
-
-        return (
-          <group key={note.id}>
-            <mesh position={[x, y, 3]}>
-              <planeGeometry args={[laneWidth, noteHeight]} />
-              <meshBasicMaterial color="#00ffff" transparent opacity={0.4} />
-            </mesh>
-            {note.endBeat !== undefined && (() => {
-              const endY = (note.endBeat + beatDelta) * beatScale + noteHeight / 2;
-              const bodyY = (y + endY) / 2;
-              const bodyHeight = Math.abs(endY - y);
-              return (
-                <>
-                  <mesh position={[x, bodyY, 2]}>
-                    <planeGeometry args={[laneWidth, bodyHeight]} />
-                    <meshBasicMaterial color="#00ffff" transparent opacity={0.2} />
-                  </mesh>
-                  <mesh position={[x, endY, 3]}>
-                    <planeGeometry args={[laneWidth, noteHeight]} />
-                    <meshBasicMaterial color="#00ffff" transparent opacity={0.4} />
-                  </mesh>
-                </>
-              );
-            })()}
-          </group>
-        );
-      })}
+      <instancedMesh
+        ref={ghostMeshRef}
+        args={[undefined, undefined, MAX_GHOST_NOTES]}
+        frustumCulled={false}
+      >
+        <planeGeometry args={[1, 1]} />
+        <meshBasicMaterial color="#00ffff" transparent opacity={0.4} />
+      </instancedMesh>
+      <instancedMesh
+        ref={ghostLnBodyMeshRef}
+        args={[undefined, undefined, MAX_GHOST_LN_BODIES]}
+        frustumCulled={false}
+      >
+        <planeGeometry args={[1, 1]} />
+        <meshBasicMaterial color="#00ffff" transparent opacity={0.2} />
+      </instancedMesh>
+      <instancedMesh
+        ref={ghostLnCapMeshRef}
+        args={[undefined, undefined, MAX_GHOST_LN_BODIES]}
+        frustumCulled={false}
+      >
+        <planeGeometry args={[1, 1]} />
+        <meshBasicMaterial color="#00ffff" transparent opacity={0.4} />
+      </instancedMesh>
     </group>
   );
 });
 
-/** 노트 통과 이펙트 */
+/** 노트 통과 이펙트 (InstancedMesh 기반, 1 draw call) */
 const MAX_NOTE_PASS_EFFECTS = 16;
 const NOTE_PASS_DURATION = 0.2;
 
@@ -482,8 +728,7 @@ export const NotePassEffect = React.memo(function NotePassEffect({
   offsetX: number;
 }) {
   const noteHeight = useNoteHeight();
-  const meshRefs = useRef<(THREE.Mesh | null)[]>(new Array(MAX_NOTE_PASS_EFFECTS).fill(null));
-  const matRefs = useRef<(THREE.MeshBasicMaterial | null)[]>(new Array(MAX_NOTE_PASS_EFFECTS).fill(null));
+  const meshRef = useRef<THREE.InstancedMesh>(null);
   const slotsRef = useRef<NotePassSlot[]>(
     Array.from({ length: MAX_NOTE_PASS_EFFECTS }, () => ({
       active: false, x: 0, y: 0, colorHex: 0xffffff, startTime: 0,
@@ -504,6 +749,9 @@ export const NotePassEffect = React.memo(function NotePassEffect({
   }, [notes]);
 
   useFrame(({ clock }) => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+
     const currentBeat = scrollBeatImperativeRef.current ?? -1;
     const prevBeat = lastBeatRef.current;
     const now = clock.getElapsedTime();
@@ -517,7 +765,7 @@ export const NotePassEffect = React.memo(function NotePassEffect({
       }
       for (let i = lo; i < sortedNotes.length && sortedNotes[i].beat <= currentBeat; i++) {
         const note = sortedNotes[i];
-        const effectLaneId = note.noteType === 'bgm' ? 'BGM' : (note.column || '');
+        const effectLaneId = note.noteType === 'bgm' ? getBgmLaneId(note) : (note.column || '');
         const lane = laneMap.get(effectLaneId);
         if (!lane) continue;
 
@@ -535,53 +783,44 @@ export const NotePassEffect = React.memo(function NotePassEffect({
     lastBeatRef.current = currentBeat;
 
     const slots = slotsRef.current;
+    let count = 0;
     for (let i = 0; i < MAX_NOTE_PASS_EFFECTS; i++) {
-      const mesh = meshRefs.current[i];
-      const mat = matRefs.current[i];
-      if (!mesh || !mat) continue;
-
       const slot = slots[i];
-      if (!slot.active) {
-        mesh.visible = false;
-        continue;
-      }
+      if (!slot.active) continue;
 
       const elapsed = now - slot.startTime;
       if (elapsed > NOTE_PASS_DURATION) {
         slot.active = false;
-        mesh.visible = false;
         continue;
       }
 
       const t = elapsed / NOTE_PASS_DURATION;
-      mesh.visible = true;
-      mesh.position.set(slot.x, slot.y, 7);
-      const scale = 1 + t * 0.5;
-      mesh.scale.set(20 * scale, 20 * scale, 1);
-      mat.color.setHex(slot.colorHex);
-      mat.opacity = 0.6 * (1 - t);
+      const scale = 20 * (1 + t * 0.5);
+      _dummy.position.set(slot.x, slot.y, 7);
+      _dummy.scale.set(scale, scale, 1);
+      _dummy.updateMatrix();
+      mesh.setMatrixAt(count, _dummy.matrix);
+      // AdditiveBlending: color intensity = visual opacity
+      _color.setHex(slot.colorHex);
+      _color.multiplyScalar(0.6 * (1 - t));
+      mesh.setColorAt(count, _color);
+      count++;
     }
+
+    mesh.count = count;
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   });
 
   return (
-    <group>
-      {Array.from({ length: MAX_NOTE_PASS_EFFECTS }, (_, i) => (
-        <mesh
-          key={i}
-          ref={(el) => { meshRefs.current[i] = el; }}
-          visible={false}
-        >
-          <circleGeometry args={[1, 16]} />
-          <meshBasicMaterial
-            ref={(el) => { matRefs.current[i] = el; }}
-            transparent
-            opacity={0}
-            blending={THREE.AdditiveBlending}
-            color="#ffffff"
-          />
-        </mesh>
-      ))}
-    </group>
+    <instancedMesh
+      ref={meshRef}
+      args={[undefined, undefined, MAX_NOTE_PASS_EFFECTS]}
+      frustumCulled={false}
+    >
+      <circleGeometry args={[1, 16]} />
+      <meshBasicMaterial transparent opacity={1} blending={THREE.AdditiveBlending} />
+    </instancedMesh>
   );
 });
 

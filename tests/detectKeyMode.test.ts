@@ -73,24 +73,22 @@ describe('detectKeyMode', () => {
     expect(detectKeyMode(notes)).toBe('5K');
   });
 
-  it('should detect 7K even with partial key usage (SC + columns 1-7)', () => {
+  it('should detect 7K when SC present and column 6 or 7 used (partial usage)', () => {
     const notes = makeNotes(['SC', '1', '3', '5', '7']);
-    // 4 key columns used, but max numeric is 7, function checks usedKeyCount
-    // Actually: columns 1,3,5,7 = 4 keys used => should detect 4K
-    // Wait, let me re-check the logic. SC is present, keyColumns filter from 1-7.
-    // usedKeyCount = 4 (columns 1,3,5,7), so it falls to usedKeyCount <= 4 => '4K'
-    // Actually no, column 7 is used so usedKeyCount checks if >= 7 first.
-    // Let me re-read: keyColumns = ['1','2','3','4','5','6','7']
-    // usedKeyCount = columns that are in usedColumns = {1,3,5,7} => 4
-    // So usedKeyCount <= 4 => '4K'
-    // But that seems wrong for a chart using column 7... The function is following
-    // the BMS convention where key count determines mode.
-    expect(detectKeyMode(notes)).toBe('4K');
+    // IIDX: column 7 exists (from channel 19) → must be 7K
+    expect(detectKeyMode(notes)).toBe('7K');
   });
 
-  it('should detect 6K for SC + 6 key columns', () => {
+  it('should detect 7K for SC + columns including 6/7 (without #6K header)', () => {
     const notes = makeNotes(['SC', '1', '2', '3', '5', '6', '7']);
-    expect(detectKeyMode(notes)).toBe('6K');
+    // Without #6K header, SC + columns 6/7 used → 7K
+    expect(detectKeyMode(notes)).toBe('7K');
+  });
+
+  it('should detect 6K for SC + 6 key columns with #6K header', () => {
+    const notes = makeNotes(['SC', '1', '2', '3', '5', '6', '7']);
+    const headers = makeHeaders({ '6K': '1', '6k': '1' });
+    expect(detectKeyMode(notes, headers)).toBe('6K');
   });
 
   // =============================================
@@ -121,11 +119,16 @@ describe('detectKeyMode', () => {
     expect(detectKeyMode(notes)).toBe('9K');
   });
 
-  it('should detect 18K for keyboard DP with columns up to 12 (maxNumeric >= 10)', () => {
-    // maxNumericColumn = 12, hasKeyboard2P = true (>= 10), no IIDX lanes
-    // Falls to: maxNumericColumn >= 10 => '18K'
+  it('should detect 10K for sparse IIDX DP gap pattern (no col 6/7, ≤10 columns)', () => {
+    // maxNumericColumn = 12, no cols 6/7, numericCount = 4 (≤10) → IIDX DP gap → 10K
     const notes = makeNotes(['1', '5', '10', '12']);
-    expect(detectKeyMode(notes)).toBe('18K');
+    expect(detectKeyMode(notes)).toBe('10K');
+  });
+
+  it('should detect 12K for keyboard DP with col 6 or 7 present (≤12 columns)', () => {
+    // Has col 6 → keyboard style, not IIDX gap → 12K
+    const notes = makeNotes(['1', '5', '6', '10', '12']);
+    expect(detectKeyMode(notes)).toBe('12K');
   });
 
   it('should detect 24K for columns up to 18+', () => {
@@ -142,8 +145,27 @@ describe('detectKeyMode', () => {
   // Keyboard DP modes
   // =============================================
 
-  it('should detect 18K for keyboard DP with columns up to 10-17', () => {
+  it('should detect 12K for keyboard DP with columns 1-10 (≤12 columns, has col 6/7)', () => {
+    // 10 numeric columns with cols 6, 7 present → keyboard style, not IIDX gap → 12K
     const notes = makeNotes(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']);
+    expect(detectKeyMode(notes)).toBe('12K');
+  });
+
+  it('should detect 10K for IIDX DP gap pattern without SC (cols 1-5, 8-12, no 6/7)', () => {
+    // IIDX DP 10K without scratch notes: columns 1-5 + 8-12, gap at 6,7
+    const notes = makeNotes(['1', '2', '3', '4', '5', '8', '9', '10', '11', '12']);
+    expect(detectKeyMode(notes)).toBe('10K');
+  });
+
+  it('should detect 10K for partial IIDX DP gap pattern (fewer columns, no 6/7)', () => {
+    // Only some 1P + 2P columns used, still IIDX gap pattern
+    const notes = makeNotes(['1', '3', '5', '8', '10']);
+    expect(detectKeyMode(notes)).toBe('10K');
+  });
+
+  it('should detect 18K for keyboard DP with > 12 numeric columns', () => {
+    // 14 numeric columns → 18K
+    const notes = makeNotes(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14']);
     expect(detectKeyMode(notes)).toBe('18K');
   });
 

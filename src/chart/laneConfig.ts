@@ -17,7 +17,7 @@ export interface LaneConfig {
 }
 
 /** 키 모드별 레인 설정 생성 */
-export function generateLaneConfig(keyMode: KeyMode): LaneConfig[] {
+export function generateLaneConfig(keyMode: KeyMode, bgmChannelCount?: number): LaneConfig[] {
   const LANE_CONFIGS: Record<
     KeyMode,
     {
@@ -209,17 +209,22 @@ export function generateLaneConfig(keyMode: KeyMode): LaneConfig[] {
     return lane;
   });
 
-  // BGM lane at the right end (with gap)
+  // BGM lanes at the right end (with gap)
+  const numBgmLanes = Math.max(1, bgmChannelCount ?? 1);
+  const bgmColors = ['#666666', '#7a6655', '#556677', '#667755', '#775566', '#557766', '#665577', '#776655'];
   x += BGM_GAP;
-  lanes.push({
-    id: 'BGM',
-    x,
-    width: BGM_LANE_WIDTH,
-    color: '#666666',
-    isScratch: false,
-    isBgm: true,
-    originalIndex: lanes.length,
-  });
+  for (let ch = 0; ch < numBgmLanes; ch++) {
+    lanes.push({
+      id: ch === 0 ? 'BGM' : `BGM${ch}`,
+      x,
+      width: BGM_LANE_WIDTH,
+      color: bgmColors[ch % bgmColors.length],
+      isScratch: false,
+      isBgm: true,
+      originalIndex: lanes.length,
+    });
+    x += BGM_LANE_WIDTH;
+  }
 
   return lanes;
 }

@@ -14,6 +14,23 @@ import type { GridSnap } from './types';
 export const NoteHeightContext = React.createContext(DEFAULT_NOTE_HEIGHT);
 export function useNoteHeight() { return React.useContext(NoteHeightContext); }
 
+/** BGM 노트의 레인 ID를 반환. bgmChannel에 따라 'BGM', 'BGM1', 'BGM2' 등 */
+export function getBgmLaneId(note: EditableBMSNote): string {
+  const ch = note.bgmChannel ?? 0;
+  return ch === 0 ? 'BGM' : `BGM${ch}`;
+}
+
+/** 레인 ID가 BGM 레인인지 확인 */
+export function isBgmLaneId(laneId: string): boolean {
+  return laneId === 'BGM' || laneId.startsWith('BGM');
+}
+
+/** 레인 ID에서 bgmChannel 번호 추출 */
+export function bgmLaneIdToChannel(laneId: string): number {
+  if (laneId === 'BGM') return 0;
+  return parseInt(laneId.slice(3), 10) || 0;
+}
+
 // 비트를 마디와 분수로 변환
 export function beatToMeasureFraction(
   beat: number,
@@ -52,12 +69,15 @@ export function getLaneColorHex(laneColor: string): { normal: number; invisible:
 }
 
 // 노트 색상을 hex number로 변환 (캐시 사용, GC 압력 제거)
+// 우선순위: isSelected(cyan) > isHighlighted(주황) > noteType 기본
 export function getNoteColorHex(
   note: EditableBMSNote,
   laneColorHex: { normal: number; invisible: number },
-  isSelected: boolean
+  isSelected: boolean,
+  isHighlighted: boolean = false
 ): number {
   if (isSelected) return 0x00ffff;
+  if (isHighlighted) return 0xffa500;
 
   switch (note.noteType) {
     case 'invisible':
