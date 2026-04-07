@@ -2,43 +2,107 @@
  * HeaderEditorPanel
  *
  * BMS 차트 헤더 편집 패널
- * title, artist, genre, bpm, playlevel, difficulty, rank, total, stagefile, banner 편집
+ * 탭: 기본 | 커스텀 | WAV | BMP | Raw
+ * - 기본: title/artist/genre/bpm 등 표준 헤더 + player/backbmp/lntype/lnobj
+ * - 커스텀: custom Map (임의 #KEY VALUE) 추가/편집/삭제
+ * - WAV: #WAVxx 정의 편집
+ * - BMP: #BMPxx 정의 편집
+ * - Raw: 전체 헤더 텍스트 직접 편집 후 일괄 적용
+ * - 검색: 각 탭 상단 필터
  */
 
-import React, { useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { cn } from '../../utils';
-import type { EditableBMSChart } from '@rhythm-archive/bms-core';
+import type { EditableBMSChart, BMSHeaderData } from '@rhythm-archive/bms-core';
 import { FilePickerCombobox } from './FilePickerCombobox';
 
-interface HeaderEditorPanelProps {
-  /** 현재 차트 */
+// ---------------------------------------------------------------------------
+// Utilities
+// ---------------------------------------------------------------------------
+
+function headersToRawText(headers: BMSHeaderData): string {
+  const lines: string[] = [];
+  const stdFields: [string, unknown][] = [
+    ['PLAYER', headers.player],
+    ['GENRE', headers.genre],
+    ['TITLE', headers.title],
+    ['SUBTITLE', headers.subtitle],
+    ['ARTIST', headers.artist],
+    ['SUBARTIST', headers.subartist],
+    ['BPM', headers.bpm],
+    ['PLAYLEVEL', headers.playlevel],
+    ['RANK', headers.rank],
+    ['TOTAL', headers.total],
+    ['DIFFICULTY', headers.difficulty],
+    ['STAGEFILE', headers.stagefile],
+    ['BANNER', headers.banner],
+    ['BACKBMP', headers.backbmp],
+    ['LNTYPE', headers.lntype],
+    ['LNOBJ', headers.lnobj],
+  ];
+  for (const [key, value] of stdFields) {
+    if (value !== undefined && value !== null && value !== '') {
+      lines.push(`#${key} ${value}`);
+    }
+  }
+  for (const [key, value] of headers.custom) {
+    if (value) lines.push(`#${key} ${value}`);
+  }
+  if (headers.bpmDef.size > 0 || headers.stopDef.size > 0) {
+    lines.push('');
+    for (const [key, value] of [...headers.bpmDef.entries()].sort()) {
+      lines.push(`#BPM${key} ${value}`);
+    }
+    for (const [key, value] of [...headers.stopDef.entries()].sort()) {
+      lines.push(`#STOP${key} ${value}`);
+    }
+  }
+  if (headers.wav.size > 0) {
+    lines.push('');
+    for (const [key, value] of [...headers.wav.entries()].sort()) {
+      if (value) lines.push(`#WAV${key} ${value}`);
+    }
+  }
+  if (headers.bmp.size > 0) {
+    lines.push('');
+    for (const [key, value] of [...headers.bmp.entries()].sort()) {
+      if (value) lines.push(`#BMP${key} ${value}`);
+    }
+  }
+  return lines.join('\n').trimEnd();
+}
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface HeaderEditorPanelProps {
   chart: EditableBMSChart;
-  /** 헤더 필드 변경 콜백 */
   onHeaderChange: (field: string, value: string | number) => void;
-  /** 읽기 전용 모드 */
+  onCustomHeaderSet?: (key: string, value: string) => void;
+  onCustomHeaderDelete?: (key: string) => void;
+  onWavDefSet?: (key: string, value: string) => void;
+  onWavDefDelete?: (key: string) => void;
+  onBmpDefSet?: (key: string, value: string) => void;
+  onBmpDefDelete?: (key: string) => void;
+  onRawApply?: (raw: string) => void;
   readOnly?: boolean;
-  /** 같은 디렉토리의 이미지 파일 목록 (파일 피커용) */
   imageFiles?: string[];
-  /** 추가 클래스명 */
   className?: string;
 }
 
-interface SelectOption {
-  value: number;
-  label: string;
-}
+type TabKey = 'basic' | 'custom' | 'wav' | 'bmp' | 'raw';
 
+interface SelectOption { value: number; label: string; }
 interface HeaderField {
   key: string;
   label: string;
   type: 'text' | 'number' | 'select';
   placeholder?: string;
   options?: SelectOption[];
-  /** 파일 피커를 표시할지 여부 */
   filePicker?: boolean;
 }
 
-/** BMS #RANK (판정 난이도) */
 const RANK_OPTIONS: SelectOption[] = [
   { value: 0, label: '0 - VERY HARD' },
   { value: 1, label: '1 - HARD' },
@@ -46,7 +110,6 @@ const RANK_OPTIONS: SelectOption[] = [
   { value: 3, label: '3 - EASY' },
 ];
 
-/** BMS #DIFFICULTY (보면 난이도 카테고리) */
 const DIFFICULTY_OPTIONS: SelectOption[] = [
   { value: 1, label: '1 - BEGINNER' },
   { value: 2, label: '2 - NORMAL' },
@@ -55,111 +118,373 @@ const DIFFICULTY_OPTIONS: SelectOption[] = [
   { value: 5, label: '5 - INSANE' },
 ];
 
-const HEADER_FIELDS: HeaderField[] = [
-  { key: 'title', label: '제목', type: 'text', placeholder: 'Title' },
-  { key: 'subtitle', label: '부제목', type: 'text', placeholder: 'Subtitle' },
-  { key: 'artist', label: '아티스트', type: 'text', placeholder: 'Artist' },
-  { key: 'subartist', label: '부 아티스트', type: 'text', placeholder: 'Subartist' },
-  { key: 'genre', label: '장르', type: 'text', placeholder: 'Genre' },
-  { key: 'bpm', label: 'BPM', type: 'number', placeholder: '130' },
-  { key: 'playlevel', label: '레벨', type: 'number', placeholder: '1' },
-  { key: 'difficulty', label: '난이도', type: 'select', options: DIFFICULTY_OPTIONS },
-  { key: 'rank', label: '판정', type: 'select', options: RANK_OPTIONS },
-  { key: 'total', label: 'Total', type: 'number', placeholder: '300' },
-  { key: 'stagefile', label: 'Stage File', type: 'text', placeholder: 'stagefile.bmp', filePicker: true },
-  { key: 'banner', label: 'Banner', type: 'text', placeholder: 'banner.bmp', filePicker: true },
+const PLAYER_OPTIONS: SelectOption[] = [
+  { value: 1, label: '1 - 1P' },
+  { value: 2, label: '2 - 2P' },
+  { value: 3, label: '3 - DOUBLE' },
 ];
+
+const HEADER_FIELDS: HeaderField[] = [
+  { key: 'title',      label: '제목',       type: 'text',   placeholder: 'Title' },
+  { key: 'subtitle',   label: '부제목',     type: 'text',   placeholder: 'Subtitle' },
+  { key: 'artist',     label: '아티스트',   type: 'text',   placeholder: 'Artist' },
+  { key: 'subartist',  label: '부 아티스트', type: 'text',  placeholder: 'Subartist' },
+  { key: 'genre',      label: '장르',       type: 'text',   placeholder: 'Genre' },
+  { key: 'bpm',        label: 'BPM',        type: 'number', placeholder: '130' },
+  { key: 'playlevel',  label: '레벨',       type: 'number', placeholder: '1' },
+  { key: 'difficulty', label: '난이도',     type: 'select', options: DIFFICULTY_OPTIONS },
+  { key: 'rank',       label: '판정',       type: 'select', options: RANK_OPTIONS },
+  { key: 'total',      label: 'Total',      type: 'number', placeholder: '300' },
+  { key: 'player',     label: 'Player',     type: 'select', options: PLAYER_OPTIONS },
+  { key: 'stagefile',  label: 'Stage File', type: 'text',   placeholder: 'stagefile.bmp', filePicker: true },
+  { key: 'banner',     label: 'Banner',     type: 'text',   placeholder: 'banner.bmp',    filePicker: true },
+  { key: 'backbmp',    label: 'Back BMP',   type: 'text',   placeholder: 'back.bmp',      filePicker: true },
+  { key: 'lntype',     label: 'LN Type',    type: 'number', placeholder: '1' },
+  { key: 'lnobj',      label: 'LNOBJ',      type: 'text',   placeholder: 'ZZ' },
+];
+
+// ---------------------------------------------------------------------------
+// MapEditor — shared UI for custom / WAV / BMP tabs
+// ---------------------------------------------------------------------------
+
+interface MapEditorProps {
+  entries: Map<string, string | number>;
+  keyPrefix?: string;
+  search: string;
+  readOnly?: boolean;
+  onSet?: (key: string, value: string) => void;
+  onDelete?: (key: string) => void;
+  addKey: string;
+  addValue: string;
+  onAddKeyChange: (v: string) => void;
+  onAddValueChange: (v: string) => void;
+  onAdd: () => void;
+}
+
+function MapEditor({
+  entries, keyPrefix = '', search, readOnly,
+  onSet, onDelete,
+  addKey, addValue, onAddKeyChange, onAddValueChange, onAdd,
+}: MapEditorProps) {
+  const q = search.toLowerCase();
+  const filtered = [...entries.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .filter(([k, v]) => !q || k.toLowerCase().includes(q) || String(v).toLowerCase().includes(q));
+
+  return (
+    <div className="flex flex-col">
+      {filtered.length === 0 && (
+        <div className="px-3 py-5 text-xs text-muted-foreground text-center">
+          {search ? '검색 결과 없음' : '항목 없음'}
+        </div>
+      )}
+      {filtered.map(([key, value]) => (
+        <div key={key} className="flex items-center gap-1 px-2 py-0.5 hover:bg-muted/30 group">
+          <span className="text-[10px] text-muted-foreground w-9 shrink-0 font-mono truncate" title={keyPrefix + key}>
+            {keyPrefix}{key}
+          </span>
+          <input
+            key={key + ':' + String(value)}
+            type="text"
+            defaultValue={String(value)}
+            readOnly={readOnly}
+            className="flex-1 min-w-0 px-1 py-0.5 text-xs bg-transparent focus:bg-muted rounded outline-none focus:ring-1 focus:ring-primary"
+            onBlur={(e) => {
+              if (!readOnly && e.target.value !== String(value)) {
+                onSet?.(key, e.target.value);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              if (e.key === 'Escape') {
+                (e.target as HTMLInputElement).value = String(value);
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+          />
+          {!readOnly && (
+            <button
+              onClick={() => onDelete?.(key)}
+              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity px-0.5 text-sm leading-none shrink-0"
+              title="삭제"
+            >×</button>
+          )}
+        </div>
+      ))}
+      {!readOnly && (
+        <div className="border-t mt-1 px-2 py-1.5 flex gap-1">
+          <input
+            type="text"
+            value={addKey}
+            onChange={(e) => onAddKeyChange(e.target.value.toUpperCase())}
+            placeholder="KEY"
+            className="w-12 px-1 py-0.5 text-xs bg-muted rounded font-mono outline-none focus:ring-1 focus:ring-primary"
+            onKeyDown={(e) => { if (e.key === 'Enter') onAdd(); }}
+          />
+          <input
+            type="text"
+            value={addValue}
+            onChange={(e) => onAddValueChange(e.target.value)}
+            placeholder="값"
+            className="flex-1 min-w-0 px-1 py-0.5 text-xs bg-muted rounded outline-none focus:ring-1 focus:ring-primary"
+            onKeyDown={(e) => { if (e.key === 'Enter') onAdd(); }}
+          />
+          <button
+            onClick={onAdd}
+            disabled={!addKey.trim()}
+            className="px-1.5 py-0.5 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-40 shrink-0"
+          >+</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
 
 export const HeaderEditorPanel = React.memo(function HeaderEditorPanel({
   chart,
   onHeaderChange,
+  onCustomHeaderSet,
+  onCustomHeaderDelete,
+  onWavDefSet,
+  onWavDefDelete,
+  onBmpDefSet,
+  onBmpDefDelete,
+  onRawApply,
   readOnly = false,
   imageFiles,
   className,
 }: HeaderEditorPanelProps) {
-  const getHeaderValue = useCallback(
-    (key: string): string => {
-      const headers = chart.headers as unknown as Record<string, string | number | undefined>;
-      const value = headers[key];
-      if (value === undefined || value === null) return '';
-      return String(value);
-    },
-    [chart.headers]
-  );
+  const [activeTab, setActiveTab] = useState<TabKey>('basic');
+  const [search, setSearch] = useState('');
+  const [rawText, setRawText] = useState('');
+  const [addKey, setAddKey] = useState('');
+  const [addValue, setAddValue] = useState('');
 
-  const handleChange = useCallback(
-    (field: HeaderField, value: string) => {
-      if (readOnly) return;
-      if (field.type === 'number' || field.type === 'select') {
-        if (value === '' || value === '--') {
-          onHeaderChange(field.key, '');
-          return;
-        }
-        const num = parseFloat(value);
-        if (!isNaN(num)) {
-          onHeaderChange(field.key, num);
-        }
-      } else {
-        onHeaderChange(field.key, value);
-      }
-    },
-    [onHeaderChange, readOnly]
-  );
+  const switchTab = useCallback((tab: TabKey) => {
+    if (tab === 'raw') setRawText(headersToRawText(chart.headers));
+    setActiveTab(tab);
+    setSearch('');
+    setAddKey('');
+    setAddValue('');
+  }, [chart.headers]);
 
-  const inputClassName = cn(
-    'w-full px-2 py-1 text-sm bg-muted rounded border-0',
-    'focus:ring-1 focus:ring-primary',
+  const getHeaderValue = useCallback((key: string): string => {
+    const h = chart.headers as unknown as Record<string, string | number | undefined>;
+    const v = h[key];
+    return v === undefined || v === null ? '' : String(v);
+  }, [chart.headers]);
+
+  const handleBasicChange = useCallback((field: HeaderField, value: string) => {
+    if (readOnly) return;
+    if (field.type === 'number' || field.type === 'select') {
+      if (value === '' || value === '--') { onHeaderChange(field.key, ''); return; }
+      const num = parseFloat(value);
+      if (!isNaN(num)) onHeaderChange(field.key, num);
+    } else {
+      onHeaderChange(field.key, value);
+    }
+  }, [onHeaderChange, readOnly]);
+
+  const inputCn = cn(
+    'w-full px-2 py-1 text-sm bg-muted rounded border-0 outline-none focus:ring-1 focus:ring-primary',
     readOnly && 'opacity-60 cursor-not-allowed'
   );
 
+  const q = search.toLowerCase();
+  const filteredBasic = HEADER_FIELDS.filter(
+    (f) => !q || f.label.toLowerCase().includes(q) || f.key.toLowerCase().includes(q)
+      || getHeaderValue(f.key).toLowerCase().includes(q)
+  );
+
+  const TABS: { key: TabKey; label: string; count?: number }[] = [
+    { key: 'basic',  label: '기본' },
+    { key: 'custom', label: '커스텀', count: chart.headers.custom.size },
+    { key: 'wav',    label: 'WAV',    count: chart.headers.wav.size },
+    { key: 'bmp',    label: 'BMP',    count: chart.headers.bmp.size },
+    { key: 'raw',    label: 'Raw' },
+  ];
+
   return (
     <div className={cn('flex flex-col h-full', className)}>
-      <div className="px-3 py-2 border-b">
-        <h3 className="text-sm font-semibold">차트 정보</h3>
-      </div>
 
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
-        {HEADER_FIELDS.map((field) => (
-          <div key={field.key}>
-            <label className="text-xs text-muted-foreground block mb-1">
-              {field.label}
-            </label>
-            {field.type === 'select' && field.options ? (
-              <select
-                value={getHeaderValue(field.key) || ''}
-                onChange={(e) => handleChange(field, e.target.value)}
-                disabled={readOnly}
-                className={inputClassName}
-              >
-                <option value="">--</option>
-                {field.options.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
-            ) : field.filePicker ? (
-              <FilePickerCombobox
-                value={getHeaderValue(field.key)}
-                onChange={(val) => handleChange(field, val)}
-                files={imageFiles ?? []}
-                placeholder={field.placeholder}
-                disabled={readOnly}
-                inputClassName={inputClassName}
-              />
-            ) : (
-              <input
-                type={field.type}
-                value={getHeaderValue(field.key)}
-                onChange={(e) => handleChange(field, e.target.value)}
-                placeholder={field.placeholder}
-                readOnly={readOnly}
-                className={inputClassName}
-              />
+      {/* ── 탭 바 ── */}
+      <div className="flex border-b shrink-0">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => switchTab(t.key)}
+            className={cn(
+              'flex-1 py-1.5 text-[11px] transition-colors',
+              activeTab === t.key
+                ? 'text-foreground border-b-2 border-primary -mb-px font-medium'
+                : 'text-muted-foreground hover:text-foreground'
             )}
-          </div>
+          >
+            {t.label}
+            {t.count !== undefined && t.count > 0 && (
+              <span className="ml-0.5 text-[9px] opacity-60">({t.count})</span>
+            )}
+          </button>
         ))}
       </div>
+
+      {/* ── 검색 바 (Raw 탭 제외) ── */}
+      {activeTab !== 'raw' && (
+        <div className="px-2 py-1.5 border-b shrink-0">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="검색..."
+            className="w-full px-2 py-0.5 text-xs bg-muted rounded outline-none focus:ring-1 focus:ring-primary"
+          />
+        </div>
+      )}
+
+      {/* ── Raw 탭: flex-col, textarea fills remaining space ── */}
+      {activeTab === 'raw' && (
+        <div className="flex-1 min-h-0 flex flex-col p-2 gap-2">
+          <p className="text-[10px] text-muted-foreground shrink-0">
+            모든 헤더를 직접 편집. 적용 시 현재 내용으로 교체됩니다.
+          </p>
+          <textarea
+            value={rawText}
+            onChange={(e) => setRawText(e.target.value)}
+            readOnly={readOnly}
+            spellCheck={false}
+            className="flex-1 min-h-0 w-full px-2 py-1.5 text-xs font-mono bg-muted rounded outline-none focus:ring-1 focus:ring-primary resize-none"
+          />
+          {!readOnly && (
+            <button
+              onClick={() => onRawApply?.(rawText)}
+              className="shrink-0 px-3 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors"
+            >
+              적용
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* ── 나머지 탭: 스크롤 가능한 컨텐츠 영역 ── */}
+      {activeTab !== 'raw' && (
+        <div className="flex-1 min-h-0 overflow-y-auto">
+
+          {/* 기본 탭 */}
+          {activeTab === 'basic' && (
+            <div className="p-3 space-y-3">
+              {filteredBasic.length === 0 && (
+                <div className="text-xs text-muted-foreground text-center py-4">검색 결과 없음</div>
+              )}
+              {filteredBasic.map((field) => (
+                <div key={field.key}>
+                  <label className="text-xs text-muted-foreground block mb-1">
+                    #{field.key.toUpperCase()} — {field.label}
+                  </label>
+                  {field.type === 'select' && field.options ? (
+                    <select
+                      value={getHeaderValue(field.key)}
+                      onChange={(e) => handleBasicChange(field, e.target.value)}
+                      disabled={readOnly}
+                      className={inputCn}
+                    >
+                      <option value="">--</option>
+                      {field.options.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                  ) : field.filePicker ? (
+                    <FilePickerCombobox
+                      value={getHeaderValue(field.key)}
+                      onChange={(val) => handleBasicChange(field, val)}
+                      files={imageFiles ?? []}
+                      placeholder={field.placeholder}
+                      disabled={readOnly}
+                      inputClassName={inputCn}
+                    />
+                  ) : (
+                    <input
+                      type={field.type}
+                      value={getHeaderValue(field.key)}
+                      onChange={(e) => handleBasicChange(field, e.target.value)}
+                      placeholder={field.placeholder}
+                      readOnly={readOnly}
+                      className={inputCn}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 커스텀 탭 */}
+          {activeTab === 'custom' && (
+            <MapEditor
+              entries={chart.headers.custom}
+              search={search}
+              readOnly={readOnly}
+              onSet={onCustomHeaderSet}
+              onDelete={onCustomHeaderDelete}
+              addKey={addKey}
+              addValue={addValue}
+              onAddKeyChange={setAddKey}
+              onAddValueChange={setAddValue}
+              onAdd={() => {
+                if (!addKey.trim()) return;
+                onCustomHeaderSet?.(addKey.trim(), addValue);
+                setAddKey(''); setAddValue('');
+              }}
+            />
+          )}
+
+          {/* WAV 탭 */}
+          {activeTab === 'wav' && (
+            <MapEditor
+              entries={chart.headers.wav}
+              keyPrefix="WAV"
+              search={search}
+              readOnly={readOnly}
+              onSet={onWavDefSet}
+              onDelete={onWavDefDelete}
+              addKey={addKey}
+              addValue={addValue}
+              onAddKeyChange={setAddKey}
+              onAddValueChange={setAddValue}
+              onAdd={() => {
+                if (!addKey.trim()) return;
+                onWavDefSet?.(addKey.trim(), addValue);
+                setAddKey(''); setAddValue('');
+              }}
+            />
+          )}
+
+          {/* BMP 탭 */}
+          {activeTab === 'bmp' && (
+            <MapEditor
+              entries={chart.headers.bmp}
+              keyPrefix="BMP"
+              search={search}
+              readOnly={readOnly}
+              onSet={onBmpDefSet}
+              onDelete={onBmpDefDelete}
+              addKey={addKey}
+              addValue={addValue}
+              onAddKeyChange={setAddKey}
+              onAddValueChange={setAddValue}
+              onAdd={() => {
+                if (!addKey.trim()) return;
+                onBmpDefSet?.(addKey.trim(), addValue);
+                setAddKey(''); setAddValue('');
+              }}
+            />
+          )}
+
+        </div>
+      )}
+
     </div>
   );
 });
