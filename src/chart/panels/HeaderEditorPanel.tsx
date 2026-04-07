@@ -166,6 +166,9 @@ function MapEditor({
   onSet, onDelete,
   addKey, addValue, onAddKeyChange, onAddValueChange, onAdd,
 }: MapEditorProps) {
+  // WAV/BMP 키는 BMS 스펙상 2자 이상 (예: "01", "ZZ")
+  const minKeyLen = keyPrefix ? 2 : 1;
+  const isKeyValid = addKey.trim().length >= minKeyLen;
   const q = search.toLowerCase();
   const filtered = [...entries.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
@@ -217,9 +220,9 @@ function MapEditor({
             type="text"
             value={addKey}
             onChange={(e) => onAddKeyChange(e.target.value.toUpperCase())}
-            placeholder="KEY"
+            placeholder={keyPrefix ? '01' : 'KEY'}
             className="w-12 px-1 py-0.5 text-xs bg-muted rounded font-mono outline-none focus:ring-1 focus:ring-primary"
-            onKeyDown={(e) => { if (e.key === 'Enter') onAdd(); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && isKeyValid) onAdd(); }}
           />
           <input
             type="text"
@@ -231,7 +234,7 @@ function MapEditor({
           />
           <button
             onClick={onAdd}
-            disabled={!addKey.trim()}
+            disabled={!isKeyValid}
             className="px-1.5 py-0.5 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-40 shrink-0"
           >+</button>
         </div>
