@@ -87,7 +87,8 @@ export const NotesRenderer = React.memo(function NotesRenderer({
     viewportBeats: number;
     highlightKeysound: string | null | undefined;
     customColors: CustomNoteColors | undefined;
-  }>({ notes: [], selectedNotes: new Set(), beatScale: 0, scrollBeat: -1, viewportBeats: 0, highlightKeysound: undefined, customColors: undefined });
+    layerConfig: typeof layerConfig;
+  }>({ notes: [], selectedNotes: new Set(), beatScale: 0, scrollBeat: -1, viewportBeats: 0, highlightKeysound: undefined, customColors: undefined, layerConfig: undefined });
 
   useFrame(() => {
     const notesMesh = notesMeshRef.current;
@@ -107,11 +108,12 @@ export const NotesRenderer = React.memo(function NotesRenderer({
       Math.abs(prev.scrollBeat - scrollBeat) < 0.01 &&
       prev.viewportBeats === viewportBeats &&
       prev.highlightKeysound === highlightKeysound &&
-      prev.customColors === customColors
+      prev.customColors === customColors &&
+      prev.layerConfig === layerConfig
     ) {
       return;
     }
-    prevDataRef.current = { notes, selectedNotes, beatScale, scrollBeat, viewportBeats, highlightKeysound, customColors };
+    prevDataRef.current = { notes, selectedNotes, beatScale, scrollBeat, viewportBeats, highlightKeysound, customColors, layerConfig };
     const playBeat = scrollBeatImperativeRef?.current;
 
     const buffer = viewportBeats * 0.5;
