@@ -410,9 +410,20 @@ export const HeaderEditorPanel = React.memo(function HeaderEditorPanel({
                     />
                   ) : (
                     <input
+                      key={field.key + ':' + getHeaderValue(field.key)}
                       type={field.type}
-                      value={getHeaderValue(field.key)}
-                      onChange={(e) => handleBasicChange(field, e.target.value)}
+                      defaultValue={getHeaderValue(field.key)}
+                      onBlur={(e) => {
+                        if (!readOnly && e.target.value !== getHeaderValue(field.key))
+                          handleBasicChange(field, e.target.value);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                        if (e.key === 'Escape') {
+                          (e.target as HTMLInputElement).value = getHeaderValue(field.key);
+                          (e.target as HTMLInputElement).blur();
+                        }
+                      }}
                       placeholder={field.placeholder}
                       readOnly={readOnly}
                       className={inputCn}
