@@ -67,6 +67,7 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
   className,
 }: KeysoundPanelProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -80,6 +81,30 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
         id.toLowerCase().includes(q) || filename.toLowerCase().includes(q)
     );
   }, [keysounds, searchQuery]);
+
+  // Group entries by folder (directory portion of filename)
+  const groupedEntries = useMemo(() => {
+    if (searchQuery) return null; // flat list when searching
+    const groups = new Map<string, [string, string][]>();
+    for (const entry of entries) {
+      const filename = entry[1];
+      const slashIdx = Math.max(filename.lastIndexOf('/'), filename.lastIndexOf('\\'));
+      const folder = slashIdx > 0 ? filename.substring(0, slashIdx) : '';
+      if (!groups.has(folder)) groups.set(folder, []);
+      groups.get(folder)!.push(entry);
+    }
+    // Only group if there's more than 1 folder
+    if (groups.size <= 1) return null;
+    return groups;
+  }, [entries, searchQuery]);
+
+  const toggleFolder = useCallback((folder: string) => {
+    setCollapsedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(folder)) next.delete(folder); else next.add(folder);
+      return next;
+    });
+  }, []);
 
   const handleSelect = useCallback(
     (id: string) => {
@@ -184,42 +209,52 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
           </div>
         ) : (
           <div className="divide-y">
-            {entries.map(([id, filename]) => {
-              const usageCount = keysoundUsageCounts?.[id] ?? undefined;
-              const isHighlighted = highlightKeysound === id;
-              return (
-                <button
-                  key={id}
-                  onClick={() => handleSelect(id)}
-                  onContextMenu={hasContextMenu ? (e) => handleContextMenu(e, id) : undefined}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, id)}
-                  className={cn(
-                    'w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted/50 transition-colors text-left cursor-grab active:cursor-grabbing',
-                    currentKeysound === id && 'bg-primary/10 text-primary',
-                    isHighlighted && 'bg-orange-500/15 ring-1 ring-orange-500/40'
+            {groupedEntries ? (
+              // Folder-grouped view
+              Array.from(groupedEntries.entries()).map(([folder, items]) => (
+                <div key={folder || '_root'}>
+                  {folder && (
+                    <button
+                      onClick={() => toggleFolder(folder)}
+                      className="w-full flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold text-zinc-500 bg-zinc-900/50 hover:bg-zinc-800/50 border-b border-border/30"
+                    >
+                      <span className="text-[9px]">{collapsedFolders.has(folder) ? '▶' : '▼'}</span>
+                      📁 {folder}
+                      <span className="ml-auto text-zinc-600">{items.length}</span>
+                    </button>
                   )}
-                >
-                  <span className="font-mono w-6 text-center shrink-0">{id}</span>
-                  <span className={cn(
-                    'truncate flex-1',
-                    usageCount === 0 ? 'text-zinc-600 line-through' : 'text-muted-foreground'
-                  )}>{filename}</span>
-                  {usageCount !== undefined && (
-                    <span className={cn(
-                      'text-[10px] shrink-0 tabular-nums',
-                      usageCount === 0 ? 'text-zinc-600' : 'text-muted-foreground'
-                    )}>
-                      ({usageCount})
-                    </span>
-                  )}
-                  {/* Audio status indicator (no separate button — click row to preview) */}
-                  {isAudioLoading && (
-                    <Loader2 className="h-3 w-3 animate-spin shrink-0 text-muted-foreground" />
-                  )}
-                </button>
-              );
-            })}
+                  {!collapsedFolders.has(folder) && items.map(([id, filename]) => {
+                    const usageCount = keysoundUsageCounts?.[id] ?? undefined;
+                    const isHighlighted = highlightKeysound === id;
+                    const displayName = folder ? filename.substring(folder.length + 1) : filename;
+                    return (
+                      <button key={id} onClick={() => handleSelect(id)} onContextMenu={hasContextMenu ? (e) => handleContextMenu(e, id) : undefined} draggable onDragStart={(e) => handleDragStart(e, id)}
+                        className={cn('w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted/50 transition-colors text-left cursor-grab active:cursor-grabbing', folder && 'pl-5', currentKeysound === id && 'bg-primary/10 text-primary', isHighlighted && 'bg-orange-500/15 ring-1 ring-orange-500/40')}>
+                        <span className="font-mono w-6 text-center shrink-0">{id}</span>
+                        <span className={cn('truncate flex-1', usageCount === 0 ? 'text-zinc-600 line-through' : 'text-muted-foreground')}>{displayName}</span>
+                        {usageCount !== undefined && <span className={cn('text-[10px] shrink-0 tabular-nums', usageCount === 0 ? 'text-zinc-600' : 'text-muted-foreground')}>({usageCount})</span>}
+                        {isAudioLoading && <Loader2 className="h-3 w-3 animate-spin shrink-0 text-muted-foreground" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))
+            ) : (
+              // Flat list (no folders or searching)
+              entries.map(([id, filename]) => {
+                const usageCount = keysoundUsageCounts?.[id] ?? undefined;
+                const isHighlighted = highlightKeysound === id;
+                return (
+                  <button key={id} onClick={() => handleSelect(id)} onContextMenu={hasContextMenu ? (e) => handleContextMenu(e, id) : undefined} draggable onDragStart={(e) => handleDragStart(e, id)}
+                    className={cn('w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted/50 transition-colors text-left cursor-grab active:cursor-grabbing', currentKeysound === id && 'bg-primary/10 text-primary', isHighlighted && 'bg-orange-500/15 ring-1 ring-orange-500/40')}>
+                    <span className="font-mono w-6 text-center shrink-0">{id}</span>
+                    <span className={cn('truncate flex-1', usageCount === 0 ? 'text-zinc-600 line-through' : 'text-muted-foreground')}>{filename}</span>
+                    {usageCount !== undefined && <span className={cn('text-[10px] shrink-0 tabular-nums', usageCount === 0 ? 'text-zinc-600' : 'text-muted-foreground')}>({usageCount})</span>}
+                    {isAudioLoading && <Loader2 className="h-3 w-3 animate-spin shrink-0 text-muted-foreground" />}
+                  </button>
+                );
+              })
+            )}
           </div>
         )}
       </div>
