@@ -110,6 +110,8 @@ function EditorCanvas({
   const scrollSuppressRef = useRef(false);
   const scrollSuppressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialBeatScaleReportedRef = useRef(false);
+  // Double-click detection for stop/bpm editing in select mode
+  const lastClickRef = useRef<{ time: number; x: number; y: number }>({ time: 0, x: 0, y: 0 });
 
   const scrollBeatRef = useRef(scrollBeat);
   const beatScaleRef = useRef(beatScale);
@@ -518,6 +520,21 @@ function EditorCanvas({
               onNoteSelect([clickedNote.id], e.nativeEvent.ctrlKey || e.nativeEvent.metaKey);
             }
           } else {
+            // Double-click empty space → edit nearby stop/bpm event
+            const now = performance.now();
+            const last = lastClickRef.current;
+            const isDblClick = now - last.time < 350 && Math.abs(world.x - last.x) < 10 && Math.abs(world.y - last.y) < 10;
+            lastClickRef.current = { time: now, x: world.x, y: world.y };
+
+            if (isDblClick) {
+              const rawBeat = world.y / beatScale;
+              const tol = 8 / beatScale;
+              const existingStop = stopEvents?.find((s) => Math.abs(s.measure * 4 + s.fraction * 4 - rawBeat) < tol);
+              if (existingStop && onStopEditRequest) { onStopEditRequest(existingStop); break; }
+              const existingBpm = bpmChanges?.find((c) => Math.abs(c.measure * 4 + c.fraction * 4 - rawBeat) < tol);
+              if (existingBpm && onBpmEditRequest) { onBpmEditRequest(existingBpm); break; }
+            }
+
             if (!e.nativeEvent.ctrlKey && !e.nativeEvent.metaKey) onNoteSelect([]);
             setRubberBand({ startX: world.x, startY: world.y, endX: world.x, endY: world.y });
           }
