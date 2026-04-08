@@ -236,7 +236,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
       {/* 노트 두께 */}
       {onNoteHeightChange && (
         <div className="flex items-center gap-1 border-r pr-2">
-          <span className="text-xs text-muted-foreground">H:</span>
+          <span className="text-xs text-muted-foreground" title="노트 두께">두께:</span>
           <input
             type="range"
             min={1}
@@ -254,7 +254,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
       {/* 줌 컨트롤 */}
       {(onZoomIn || onZoomOut) && (
         <div className="flex items-center gap-1 border-r pr-2">
-          <span className="text-xs text-muted-foreground">Z:</span>
+          <span className="text-xs text-muted-foreground" title="줌 배율">줌:</span>
           <button
             onClick={onZoomOut}
             disabled={currentBeatScale !== undefined && currentBeatScale <= 2}
@@ -315,7 +315,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
       {/* 키 모드 */}
       {keyMode && onKeyModeChange && (
         <div className="flex items-center gap-1 border-r pr-2">
-          <span className="text-xs text-muted-foreground">Keys:</span>
+          <span className="text-xs text-muted-foreground" title="키 모드">모드:</span>
           <select
             value={keyMode}
             onChange={(e) => onKeyModeChange(e.target.value as KeyMode)}
