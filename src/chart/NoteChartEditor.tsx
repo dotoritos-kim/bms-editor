@@ -178,6 +178,15 @@ function EditorCanvas({
     return () => gl.domElement.removeEventListener('wheel', handleWheel);
   }, [gl.domElement, totalBeats]);
 
+  // Tool-specific cursor
+  useEffect(() => {
+    const cursorMap: Record<string, string> = {
+      select: 'default', addNote: 'cell', delete: 'crosshair',
+      move: 'grab', keysound: 'pointer', bpm: 'cell', stop: 'cell',
+    };
+    gl.domElement.style.cursor = cursorMap[activeTool] || 'default';
+  }, [activeTool, gl.domElement]);
+
   // 키보드 네비게이션
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

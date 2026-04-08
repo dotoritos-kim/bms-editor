@@ -117,7 +117,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 ring-1 ring-blue-400/50'
                   : 'hover:bg-muted text-muted-foreground hover:text-foreground'
               )}
-              title={`${tool.label} (${tool.shortcut}) — ${tool.description}`}
+              title={`${tool.label} (${tool.shortcut}) - ${tool.description}`}
             >
               {tool.icon}
               <span className="text-[9px] leading-none">{tool.shortcut}</span>
@@ -399,15 +399,15 @@ export const EditorToolbar = React.memo(function EditorToolbar({
           <button
             onClick={onSave}
             className={cn(
-              'px-3 py-1.5 text-sm rounded flex items-center gap-1',
+              'px-3 py-1.5 text-sm rounded flex items-center gap-1.5 font-medium',
               hasUnsavedChanges
                 ? 'bg-yellow-500 text-yellow-950 hover:bg-yellow-400'
-                : 'bg-muted hover:bg-muted/80'
+                : 'bg-muted hover:bg-muted/80 text-muted-foreground'
             )}
-            title="Save (Ctrl+S)"
+            title="저장 (Ctrl+S)"
           >
             <Save size={16} />
-            Save
+            {hasUnsavedChanges ? '저장' : '저장됨'}
           </button>
         )}
         {onCreatePR && (
