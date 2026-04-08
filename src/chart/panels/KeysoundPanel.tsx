@@ -167,7 +167,7 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
               draggable
               onDragStart={(e) => handleDragStart(e, '00')}
               className={cn(
-                'w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors text-left cursor-grab active:cursor-grabbing',
+                'w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted/50 transition-colors text-left cursor-grab active:cursor-grabbing',
                 currentKeysound === '00' && 'bg-primary/10 text-primary'
               )}
             >
@@ -195,7 +195,7 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
                   draggable
                   onDragStart={(e) => handleDragStart(e, id)}
                   className={cn(
-                    'w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors text-left cursor-grab active:cursor-grabbing',
+                    'w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted/50 transition-colors text-left cursor-grab active:cursor-grabbing',
                     currentKeysound === id && 'bg-primary/10 text-primary',
                     isHighlighted && 'bg-orange-500/15 ring-1 ring-orange-500/40'
                   )}

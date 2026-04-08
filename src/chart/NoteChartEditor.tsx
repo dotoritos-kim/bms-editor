@@ -90,7 +90,7 @@ function EditorCanvas({
   scrollBeatImperativeRef?: React.RefObject<number>;
 }) {
   const { camera, gl, size } = useThree();
-  const [scrollBeat, setScrollBeat] = useState(0);
+  const [scrollBeat, setScrollBeat] = useState(-4); // Start slightly below beat 0 so bottom edge isn't flush with window
   const [beatScale, setBeatScale] = useState(() =>
     initialBeatScale === 20 ? defaultBeatScaleForKeyMode(keyMode) : initialBeatScale
   );
@@ -106,6 +106,9 @@ function EditorCanvas({
   const [snapGuideBeat, setSnapGuideBeat] = useState<number | null>(null);
   const pointerUpProcessedRef = useRef(false);
   const pendingBeatScaleRef = useRef<number | null>(null);
+  // Suppress hover preview during scroll (wheel)
+  const scrollSuppressRef = useRef(false);
+  const scrollSuppressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialBeatScaleReportedRef = useRef(false);
 
   const scrollBeatRef = useRef(scrollBeat);
@@ -147,6 +150,10 @@ function EditorCanvas({
   useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
+      // Suppress hover preview during scroll to avoid unintended keysound playback
+      scrollSuppressRef.current = true;
+      if (scrollSuppressTimerRef.current) clearTimeout(scrollSuppressTimerRef.current);
+      scrollSuppressTimerRef.current = setTimeout(() => { scrollSuppressRef.current = false; }, 150);
       if (e.ctrlKey || e.metaKey) {
         const factor = e.deltaY > 0 ? (1 / 1.15) : 1.15;
         const newScale = Math.max(2, Math.min(200, Math.round(beatScaleRef.current * factor)));
@@ -412,7 +419,7 @@ function EditorCanvas({
       if (column && beat >= 0) setHoverPosition({ beat, column });
       else setHoverPosition(null);
 
-      if (onNoteHover && pointerActuallyMoved) {
+      if (onNoteHover && pointerActuallyMoved && !scrollSuppressRef.current) {
         const hoveredNote = findNoteAtPosition(world.x, world.y);
         onNoteHover(hoveredNote?.keysound && hoveredNote.keysound !== '00' ? hoveredNote.keysound : null);
       }
