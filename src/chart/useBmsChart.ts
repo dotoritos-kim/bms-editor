@@ -112,8 +112,14 @@ export type UseBmsChartReturn = [UseBmsChartState, UseBmsChartControls];
  * - 4K: 컬럼 1,2,6,7 또는 유사 패턴, SC 미사용
  */
 export function detectKeyMode(notes: BMSNote[], headers?: { get: (key: string) => string | undefined }): KeyMode {
-  // 헤더 확장 명령 확인 (#6K, #4K)
+  // 헤더 확장 명령 확인 (#6K, #4K, #KEYMODE)
   if (headers) {
+    const keymode = headers.get('keymode');
+    if (keymode) {
+      const km = keymode.trim().toUpperCase();
+      const valid: KeyMode[] = ['4K','5K','6K','7K','8K','9K','10K','12K','14K','18K','24K','48K'];
+      if (valid.includes(km as KeyMode)) return km as KeyMode;
+    }
     const has6K = headers.get('6k') || headers.get('6K');
     const has4K = headers.get('4k') || headers.get('4K');
     if (has6K) return '6K';

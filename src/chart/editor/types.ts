@@ -121,6 +121,7 @@ export interface NoteChartEditorProps {
   onBpmEditRequest?: (bpmChange: BMSBpmChange) => void;
   onStopRequest?: (beat: number) => void;
   onStopEditRequest?: (stopEvent: BMSStopEvent) => void;
+  onStopDelete?: (stopEvent: BMSStopEvent) => void;
   onKeysoundAssign?: (noteId: string, keysoundId: string) => void;
   onDropKeysound?: (keysoundId: string, beat: number, column: string) => void;
   onNoteHover?: (keysoundId: string | null) => void;

@@ -72,6 +72,7 @@ function EditorCanvas({
   onBpmEditRequest,
   onStopRequest,
   onStopEditRequest,
+  onStopDelete,
   onKeysoundAssign,
   onDropKeysound: _onDropKeysound,
   onNoteHover,
@@ -241,6 +242,9 @@ function EditorCanvas({
   );
 
   // Shift key tracking for free move (snap bypass)
+  // Track actual pointer position to avoid false hover events when camera lerps after scroll
+  const lastPointerClientRef = useRef({ x: -1, y: -1 });
+
   const shiftHeldRef = useRef(false);
   useEffect(() => {
     const down = (e: KeyboardEvent) => { if (e.key === 'Shift') shiftHeldRef.current = true; };
@@ -397,18 +401,27 @@ function EditorCanvas({
   // 이벤트 핸들러
   const handlePointerMove = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
-      const world = screenToWorld(e.nativeEvent.clientX, e.nativeEvent.clientY);
+      const { clientX, clientY } = e.nativeEvent;
+      const pointerActuallyMoved =
+        clientX !== lastPointerClientRef.current.x || clientY !== lastPointerClientRef.current.y;
+      lastPointerClientRef.current = { x: clientX, y: clientY };
+
+      const world = screenToWorld(clientX, clientY);
       const { column, beat } = worldToLaneBeat(world.x, world.y);
 
       if (column && beat >= 0) setHoverPosition({ beat, column });
       else setHoverPosition(null);
 
-      if (onNoteHover) {
+      if (onNoteHover && pointerActuallyMoved) {
         const hoveredNote = findNoteAtPosition(world.x, world.y);
         onNoteHover(hoveredNote?.keysound && hoveredNote.keysound !== '00' ? hoveredNote.keysound : null);
       }
 
-      if (rubberBand) setRubberBand((prev) => prev ? { ...prev, endX: world.x, endY: world.y } : null);
+      if (rubberBand) {
+        // Clamp Y to [0, totalHeight] so rubber band stays within the chart (doesn't bleed into status bar)
+        const clampedY = Math.max(0, Math.min(totalHeight, world.y));
+        setRubberBand((prev) => prev ? { ...prev, endX: world.x, endY: clampedY } : null);
+      }
 
       if (resizing && dragStart) {
         const rawBeat = world.y / beatScale;
@@ -454,7 +467,7 @@ function EditorCanvas({
         setSnapGuideBeat(null);
       }
     },
-    [screenToWorld, worldToLaneBeat, isDragging, dragStart, rubberBand, activeTool, lanes, offsetX, resizing, notes, beatScale, gridSnap, onNoteHover, findNoteAtPosition, lnDragCreate]
+    [screenToWorld, worldToLaneBeat, isDragging, dragStart, rubberBand, activeTool, lanes, offsetX, resizing, notes, beatScale, gridSnap, totalHeight, onNoteHover, findNoteAtPosition, lnDragCreate]
   );
 
   const handlePointerDown = useCallback(
@@ -463,7 +476,7 @@ function EditorCanvas({
       pointerUpProcessedRef.current = false;
       const world = screenToWorld(e.nativeEvent.clientX, e.nativeEvent.clientY);
       const { column, beat } = worldToLaneBeat(world.x, world.y);
-      if (!column || beat < 0) return;
+      if (!column || beat < 0 || beat > totalBeats) return;
       if (e.nativeEvent.button === 2) return;
 
       switch (activeTool) {
@@ -509,7 +522,14 @@ function EditorCanvas({
         }
         case 'delete': {
           const clickedNote = findNoteAtPosition(world.x, world.y);
-          if (clickedNote) onNoteDelete([clickedNote.id]);
+          if (clickedNote) {
+            onNoteDelete([clickedNote.id]);
+          } else if (stopEvents && onStopDelete) {
+            const rawBeat = world.y / beatScale;
+            const stopClickTolerance = 8 / beatScale;
+            const existingStop = stopEvents.find((s) => Math.abs(s.measure * 4 + s.fraction * 4 - rawBeat) < stopClickTolerance);
+            if (existingStop) onStopDelete(existingStop);
+          }
           break;
         }
         case 'move': {
@@ -537,7 +557,7 @@ function EditorCanvas({
         }
         case 'stop': {
           const rawBeat = world.y / beatScale;
-          const stopClickTolerance = 2 / beatScale;
+          const stopClickTolerance = 8 / beatScale;
           const existingStop = stopEvents?.find((s) => Math.abs(s.measure * 4 + s.fraction * 4 - rawBeat) < stopClickTolerance);
           if (existingStop && onStopEditRequest) onStopEditRequest(existingStop);
           else if (onStopRequest) onStopRequest(beat);
@@ -545,7 +565,7 @@ function EditorCanvas({
         }
       }
     },
-    [activeTool, screenToWorld, worldToLaneBeat, findNoteAtPosition, findLongNoteEndAtPosition, selectedNotes, selectedNoteType, currentKeysound, baseBpm, beatScale, onNoteAdd, onNoteDelete, onNoteSelect, onBpmChange, onBpmRequest, onBpmEditRequest, onStopRequest, onStopEditRequest, stopEvents, onKeysoundAssign]
+    [activeTool, screenToWorld, worldToLaneBeat, findNoteAtPosition, findLongNoteEndAtPosition, selectedNotes, selectedNoteType, currentKeysound, baseBpm, beatScale, totalBeats, onNoteAdd, onNoteDelete, onNoteSelect, onBpmChange, onBpmRequest, onBpmEditRequest, onStopRequest, onStopEditRequest, onStopDelete, stopEvents, onKeysoundAssign]
   );
 
   const handlePointerUp = useCallback(
@@ -705,7 +725,7 @@ export const NoteChartEditor = React.memo(function NoteChartEditor({
   bpmChanges, stopEvents, baseBpm = 120, timeSignatures,
   bgmChannelCount,
   onNoteAdd, onNoteDelete, onNoteMove, onNoteSelect, onNoteUpdate,
-  onBpmChange, onBpmRequest, onBpmEditRequest, onStopRequest, onStopEditRequest,
+  onBpmChange, onBpmRequest, onBpmEditRequest, onStopRequest, onStopEditRequest, onStopDelete,
   onKeysoundAssign, onDropKeysound, onNoteHover,
   highlightKeysound,
   scrollToBeat, onScrollChange, scrollBeatImperativeRef,
@@ -763,7 +783,7 @@ export const NoteChartEditor = React.memo(function NoteChartEditor({
           onNoteAdd={onNoteAdd} onNoteDelete={onNoteDelete} onNoteMove={onNoteMove}
           onNoteSelect={onNoteSelect} onNoteUpdate={onNoteUpdate}
           onBpmChange={onBpmChange} onBpmRequest={onBpmRequest} onBpmEditRequest={onBpmEditRequest}
-          onStopRequest={onStopRequest} onStopEditRequest={onStopEditRequest}
+          onStopRequest={onStopRequest} onStopEditRequest={onStopEditRequest} onStopDelete={onStopDelete}
           onKeysoundAssign={onKeysoundAssign} onDropKeysound={onDropKeysound} onNoteHover={onNoteHover}
           highlightKeysound={highlightKeysound}
           bgmChannelCount={bgmChannelCount}

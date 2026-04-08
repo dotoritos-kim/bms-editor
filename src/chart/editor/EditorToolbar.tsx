@@ -4,7 +4,7 @@
  * 도구 선택, 그리드 스냅, 노트 타입, Undo/Redo, 저장 등
  */
 
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   MousePointer2,
   Plus,
@@ -68,6 +68,8 @@ export const EditorToolbar = React.memo(function EditorToolbar({
   currentBeatScale,
 }: EditorToolbarProps) {
   const [showZoomPreset, setShowZoomPreset] = React.useState(false);
+  const [showCustomGrid, setShowCustomGrid] = React.useState(false);
+  const customGridInputRef = useRef<HTMLInputElement>(null);
   const zoomPresetRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
     if (!showZoomPreset) return;
@@ -80,11 +82,11 @@ export const EditorToolbar = React.memo(function EditorToolbar({
 
   const tools: { id: EditorTool; icon: React.ReactNode; label: string; shortcut: string; description: string }[] = [
     { id: 'select', icon: <MousePointer2 size={16} />, label: '선택', shortcut: 'V', description: '클릭/드래그로 노트를 선택합니다. Shift+클릭으로 추가 선택.' },
-    { id: 'addNote', icon: <Plus size={16} />, label: '추가', shortcut: 'A', description: '��릭한 위치에 새 노트를 배치합니다.' },
+    { id: 'addNote', icon: <Plus size={16} />, label: '추가', shortcut: 'A', description: '클릭한 위치에 새 노트를 배치합니다.' },
     { id: 'delete', icon: <Trash2 size={16} />, label: '삭제', shortcut: 'D', description: '클릭한 노트를 삭제합니다.' },
     { id: 'move', icon: <Move size={16} />, label: '이동', shortcut: 'M', description: '선택한 노트를 드래그하거나 방향키로 이동합니다.' },
     { id: 'keysound', icon: <Music size={16} />, label: '키음', shortcut: 'K', description: '노트를 클릭하여 현재 키음을 할당합니다.' },
-    { id: 'bpm', icon: <Gauge size={16} />, label: 'BPM', shortcut: 'B', description: '클릭��� 위치에 BPM 변경을 추가/편집합니다.' },
+    { id: 'bpm', icon: <Gauge size={16} />, label: 'BPM', shortcut: 'B', description: '클릭한 위치에 BPM 변경을 추가/편집합니다.' },
     { id: 'stop', icon: <Timer size={16} />, label: 'STOP', shortcut: 'T', description: '클릭한 위치에 STOP 이벤트를 추가/편집합니다.' },
   ];
 
@@ -127,16 +129,43 @@ export const EditorToolbar = React.memo(function EditorToolbar({
       {/* 그리드 스냅 */}
       <div className="flex items-center gap-1 border-r pr-2">
         <span className="text-xs text-muted-foreground">Grid:</span>
+        {showCustomGrid ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const val = customGridInputRef.current?.value ?? '';
+              const parsed = parseInt(val, 10);
+              if (parsed > 0 && parsed <= 3840) onGridSnapChange(parsed as GridSnap);
+              setShowCustomGrid(false);
+            }}
+            className="flex items-center gap-1"
+          >
+            <input
+              ref={customGridInputRef}
+              type="number"
+              min={1}
+              max={3840}
+              defaultValue={String(gridSnap)}
+              autoFocus
+              className="w-16 px-1.5 py-0.5 text-xs bg-muted border border-blue-500 rounded"
+              onBlur={(e) => {
+                // Submit value on blur instead of just closing
+                const val = e.currentTarget.value;
+                const parsed = parseInt(val, 10);
+                if (parsed > 0 && parsed <= 3840) onGridSnapChange(parsed as GridSnap);
+                setShowCustomGrid(false);
+              }}
+              onKeyDown={(e) => { if (e.key === 'Escape') { e.currentTarget.blur(); } }}
+            />
+            <span className="text-[10px] text-zinc-500">/m</span>
+          </form>
+        ) : (
         <select
           value={GRID_SNAP_OPTIONS.includes(gridSnap as any) ? gridSnap : 'custom'}
           onChange={(e) => {
             const val = e.target.value;
             if (val === 'custom') {
-              const input = prompt('Grid divisions per measure (1~3840):', String(gridSnap));
-              if (input) {
-                const parsed = parseInt(input, 10);
-                if (parsed > 0 && parsed <= 3840) onGridSnapChange(parsed as GridSnap);
-              }
+              setShowCustomGrid(true);
             } else {
               onGridSnapChange(parseInt(val) as GridSnap);
             }
@@ -154,7 +183,8 @@ export const EditorToolbar = React.memo(function EditorToolbar({
           })}
           <option value="custom">Custom...</option>
         </select>
-        {!GRID_SNAP_OPTIONS.includes(gridSnap as any) && (
+        )}
+        {!showCustomGrid && !GRID_SNAP_OPTIONS.includes(gridSnap as any) && (
           <span className="text-[10px] text-yellow-400" title="Custom grid snap">{gridSnap}/m</span>
         )}
       </div>
