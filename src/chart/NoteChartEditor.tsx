@@ -686,6 +686,13 @@ function EditorCanvas({
       {activeTool === 'addNote' && !lnDragCreate && hoverPosition && (
         <HoverPreview beat={hoverPosition.beat} column={hoverPosition.column} lanes={lanes} beatScale={beatScale} offsetX={offsetX} isSilent={currentKeysound === '00'} isLongNote={selectedNoteType === 'longNote'} />
       )}
+      {/* Stop/BPM tool hover line preview */}
+      {(activeTool === 'stop' || activeTool === 'bpm') && hoverPosition && (
+        <mesh position={[0, hoverPosition.beat * beatScale, 6]}>
+          <planeGeometry args={[totalWidth + 20, 1.5]} />
+          <meshBasicMaterial color={activeTool === 'stop' ? '#ff4444' : '#44aaff'} transparent opacity={0.6} />
+        </mesh>
+      )}
       {/* Snap guideline — horizontal line at nearest note beat */}
       {snapGuideBeat !== null && (
         <mesh position={[0, snapGuideBeat * beatScale, 6]}>
