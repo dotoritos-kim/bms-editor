@@ -213,30 +213,9 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
                       ({usageCount})
                     </span>
                   )}
-                  {onPreview && (
-                    <button
-                      onClick={(e) => handlePreview(e, id)}
-                      disabled={!isAudioReady}
-                      className={cn(
-                        'p-0.5 shrink-0',
-                        isAudioReady
-                          ? 'hover:text-primary'
-                          : 'opacity-30 cursor-not-allowed'
-                      )}
-                      title={
-                        isAudioLoading
-                          ? '오디오 로딩 중...'
-                          : isAudioReady
-                            ? '미리듣기'
-                            : '오디오 미로드'
-                      }
-                    >
-                      {isAudioLoading ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <Volume2 className="h-3 w-3" />
-                      )}
-                    </button>
+                  {/* Audio status indicator (no separate button — click row to preview) */}
+                  {isAudioLoading && (
+                    <Loader2 className="h-3 w-3 animate-spin shrink-0 text-muted-foreground" />
                   )}
                 </button>
               );
