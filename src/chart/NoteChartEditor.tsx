@@ -178,14 +178,18 @@ function EditorCanvas({
     return () => gl.domElement.removeEventListener('wheel', handleWheel);
   }, [gl.domElement, totalBeats]);
 
-  // Tool-specific cursor
+  // Tool-specific cursor (+ grabbing when dragging)
   useEffect(() => {
+    if (isDragging) {
+      gl.domElement.style.cursor = 'grabbing';
+      return;
+    }
     const cursorMap: Record<string, string> = {
       select: 'default', addNote: 'cell', delete: 'crosshair',
       move: 'grab', keysound: 'pointer', bpm: 'cell', stop: 'cell',
     };
     gl.domElement.style.cursor = cursorMap[activeTool] || 'default';
-  }, [activeTool, gl.domElement]);
+  }, [activeTool, isDragging, gl.domElement]);
 
   // 키보드 네비게이션
   useEffect(() => {
@@ -449,7 +453,7 @@ function EditorCanvas({
         }
       }
 
-      if (isDragging && dragStart && activeTool === 'move') {
+      if (isDragging && dragStart && (activeTool === 'move' || activeTool === 'select')) {
         const { beat: startBeat } = worldToLaneBeat(dragStart.x, dragStart.y);
         const beatDelta = beat - startBeat;
         const startLaneIdx = lanes.findIndex((l) => { const relX = dragStart.x - offsetX; return relX >= l.x && relX < l.x + l.width; });
@@ -465,7 +469,7 @@ function EditorCanvas({
       }
 
       // Snap guideline: find nearest existing note beat in same column (viewport only)
-      if (column && (activeTool === 'addNote' || activeTool === 'move')) {
+      if (column && (activeTool === 'addNote' || activeTool === 'move' || (activeTool === 'select' && isDragging))) {
         const rawBeat = world.y / beatScale;
         const tolerance = 16 / beatScale; // 16px snap range
         let nearest: number | null = null;
@@ -506,7 +510,13 @@ function EditorCanvas({
           }
           const clickedNote = findNoteAtPosition(world.x, world.y);
           if (clickedNote) {
-            onNoteSelect([clickedNote.id], e.nativeEvent.ctrlKey || e.nativeEvent.metaKey);
+            // DAW-style: if clicking an already-selected note, start drag-move
+            if (selectedNotes.has(clickedNote.id) && !e.nativeEvent.ctrlKey && !e.nativeEvent.metaKey) {
+              setIsDragging(true);
+              setDragStart({ x: world.x, y: world.y });
+            } else {
+              onNoteSelect([clickedNote.id], e.nativeEvent.ctrlKey || e.nativeEvent.metaKey);
+            }
           } else {
             if (!e.nativeEvent.ctrlKey && !e.nativeEvent.metaKey) onNoteSelect([]);
             setRubberBand({ startX: world.x, startY: world.y, endX: world.x, endY: world.y });
