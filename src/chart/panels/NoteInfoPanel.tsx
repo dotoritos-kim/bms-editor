@@ -315,16 +315,16 @@ export const NoteInfoPanel = React.memo(function NoteInfoPanel({
               const layerFilename = wavDefinitions.get(layer.keysound) || '';
               return (
                 <div key={i} className="flex items-center gap-1 py-0.5">
-                  <span className="text-[10px] text-muted-foreground px-1 rounded bg-muted">
+                  <span className="text-xs text-muted-foreground px-1 rounded bg-muted">
                     {layer.type === 'invisible' ? 'INV' : 'BGM'}
                   </span>
-                  <span className="font-mono text-[10px] truncate flex-1" title={layerFilename}>
+                  <span className="font-mono text-xs truncate flex-1" title={layerFilename}>
                     {layer.keysound}{layerFilename ? ` → ${layerFilename}` : ''}
                   </span>
                   {onRemoveKeysoundLayer && (
                     <button
                       onClick={() => onRemoveKeysoundLayer(singleNote.id, i)}
-                      className="p-0.5 hover:text-destructive shrink-0"
+                      className="p-1 hover:text-destructive shrink-0"
                       title="레이어 삭제"
                     >
                       <X className="h-2.5 w-2.5" />
@@ -343,14 +343,14 @@ export const NoteInfoPanel = React.memo(function NoteInfoPanel({
               <select
                 value={addLayerType}
                 onChange={(e) => setAddLayerType(e.target.value as 'invisible' | 'bgm')}
-                className="px-1 py-0.5 text-[10px] bg-muted rounded flex-1 min-w-0"
+                className="px-1 py-0.5 text-xs bg-muted rounded flex-1 min-w-0"
               >
                 <option value="invisible">Invisible</option>
                 <option value="bgm">BGM</option>
               </select>
               <button
                 onClick={handleAddLayer}
-                className="flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] rounded bg-primary/10 hover:bg-primary/20 text-primary shrink-0"
+                className="flex items-center gap-0.5 px-1.5 py-0.5 text-xs rounded bg-primary/10 hover:bg-primary/20 text-primary shrink-0"
                 title={`키음 ${currentKeysound} 레이어 추가`}
               >
                 <Plus className="h-2.5 w-2.5" />

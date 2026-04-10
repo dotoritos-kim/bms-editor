@@ -183,7 +183,7 @@ function MapEditor({
       )}
       {filtered.map(([key, value]) => (
         <div key={key} className="flex items-center gap-1 px-2 py-0.5 hover:bg-muted/30 group">
-          <span className="text-[10px] text-muted-foreground w-9 shrink-0 font-mono truncate" title={keyPrefix + key}>
+          <span className="text-xs text-muted-foreground w-9 shrink-0 font-mono truncate" title={keyPrefix + key}>
             {keyPrefix}{key}
           </span>
           <input
@@ -321,7 +321,7 @@ export const HeaderEditorPanel = React.memo(function HeaderEditorPanel({
             key={t.key}
             onClick={() => switchTab(t.key)}
             className={cn(
-              'flex-1 py-1.5 text-[11px] transition-colors',
+              'flex-1 py-1.5 text-xs transition-colors',
               activeTab === t.key
                 ? 'text-foreground border-b-2 border-primary -mb-px font-medium'
                 : 'text-muted-foreground hover:text-foreground'
@@ -329,7 +329,7 @@ export const HeaderEditorPanel = React.memo(function HeaderEditorPanel({
           >
             {t.label}
             {t.count !== undefined && t.count > 0 && (
-              <span className="ml-0.5 text-[9px] opacity-60">({t.count})</span>
+              <span className="ml-0.5 text-xs opacity-60">({t.count})</span>
             )}
           </button>
         ))}
@@ -351,7 +351,7 @@ export const HeaderEditorPanel = React.memo(function HeaderEditorPanel({
       {/* ── Raw 탭: flex-col, textarea fills remaining space ── */}
       {activeTab === 'raw' && (
         <div className="flex-1 min-h-0 flex flex-col p-2 gap-2">
-          <p className="text-[10px] text-muted-foreground shrink-0">
+          <p className="text-xs text-muted-foreground shrink-0">
             모든 헤더를 직접 편집. 적용 시 현재 내용으로 교체됩니다.
           </p>
           <textarea

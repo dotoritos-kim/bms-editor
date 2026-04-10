@@ -111,6 +111,8 @@ export const EditorToolbar = React.memo(function EditorToolbar({
             <button
               key={tool.id}
               onClick={() => onToolChange(tool.id)}
+              aria-pressed={isActive}
+              aria-label={`${tool.label} (${tool.shortcut})`}
               className={cn(
                 'relative flex flex-col items-center gap-0.5 px-2 py-1 rounded transition-colors min-w-[40px]',
                 isActive
@@ -120,7 +122,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
               title={`${tool.label} (${tool.shortcut}) - ${tool.description}`}
             >
               {tool.icon}
-              <span className="text-[9px] leading-none">{tool.shortcut}</span>
+              <span className="text-xs leading-none">{tool.shortcut}</span>
             </button>
           );
         })}
@@ -157,7 +159,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
               }}
               onKeyDown={(e) => { if (e.key === 'Escape') { e.currentTarget.blur(); } }}
             />
-            <span className="text-[10px] text-zinc-500">/m</span>
+            <span className="text-xs text-zinc-400">/m</span>
           </form>
         ) : (
         <select
@@ -185,7 +187,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
         </select>
         )}
         {!showCustomGrid && !GRID_SNAP_OPTIONS.includes(gridSnap as any) && (
-          <span className="text-[10px] text-yellow-400" title="Custom grid snap">{gridSnap}/m</span>
+          <span className="text-xs text-yellow-400" title="Custom grid snap">{gridSnap}/m</span>
         )}
       </div>
 
@@ -194,6 +196,8 @@ export const EditorToolbar = React.memo(function EditorToolbar({
         <div className="flex items-center gap-1 border-r pr-2">
           <button
             onClick={onSnapToggle}
+            aria-pressed={snapEnabled}
+            aria-label={`그리드 스냅 ${snapEnabled ? '켜짐' : '꺼짐'}`}
             className={cn(
               'px-2 py-1 text-xs rounded transition-colors',
               snapEnabled
@@ -219,8 +223,10 @@ export const EditorToolbar = React.memo(function EditorToolbar({
                 key={layer}
                 onClick={() => onLayerVisibleToggle(layer)}
                 onContextMenu={(e) => { e.preventDefault(); onLayerLockToggle?.(layer); }}
+                aria-pressed={lc.visible}
+                aria-label={`${layer} 레이어 ${lc.visible ? '표시중' : '숨김'}${lc.locked ? ' (잠금)' : ''}`}
                 className={cn(
-                  'w-6 h-6 text-[10px] font-bold rounded transition-colors',
+                  'w-7 h-7 text-xs font-bold rounded transition-colors',
                   !lc.visible ? 'opacity-30 bg-muted' : lc.locked ? 'ring-1 ring-red-400' : ''
                 )}
                 style={{ backgroundColor: lc.visible ? colors[layer] + '40' : undefined, color: colors[layer] }}
@@ -247,7 +253,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
             className="w-14 h-1 accent-blue-500"
             title={`노트 두께: ${noteHeight}`}
           />
-          <span className="text-[10px] text-muted-foreground w-4">{noteHeight}</span>
+          <span className="text-xs text-muted-foreground w-5">{noteHeight}</span>
         </div>
       )}
 
@@ -258,7 +264,8 @@ export const EditorToolbar = React.memo(function EditorToolbar({
           <button
             onClick={onZoomOut}
             disabled={currentBeatScale !== undefined && currentBeatScale <= 2}
-            className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            aria-label="축소"
+            className="p-1.5 rounded hover:bg-muted transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             title="축소 (-)"
           >
             <ZoomOut size={14} />
@@ -266,7 +273,10 @@ export const EditorToolbar = React.memo(function EditorToolbar({
           <div className="relative" ref={zoomPresetRef}>
             <button
               onClick={() => setShowZoomPreset((v) => !v)}
-              className="w-8 text-[10px] text-center text-muted-foreground hover:text-foreground px-1"
+              aria-label="줌 배율 프리셋"
+              aria-expanded={showZoomPreset}
+              aria-haspopup="listbox"
+              className="w-10 text-xs text-center text-muted-foreground hover:text-foreground px-1"
               title="줌 배율 (클릭: 프리셋)"
             >
               {currentBeatScale ?? 20}
@@ -295,7 +305,8 @@ export const EditorToolbar = React.memo(function EditorToolbar({
           <button
             onClick={onZoomIn}
             disabled={currentBeatScale !== undefined && currentBeatScale >= 200}
-            className="p-1 rounded hover:bg-muted transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            aria-label="확대"
+            className="p-1.5 rounded hover:bg-muted transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             title="확대 (=)"
           >
             <ZoomIn size={14} />
@@ -303,7 +314,8 @@ export const EditorToolbar = React.memo(function EditorToolbar({
           {onZoomFit && (
             <button
               onClick={onZoomFit}
-              className="p-1 rounded hover:bg-muted transition-colors"
+              aria-label="차트 전체 보기"
+              className="p-1.5 rounded hover:bg-muted transition-colors"
               title="차트 전체 보기"
             >
               <Maximize2 size={14} />
@@ -354,6 +366,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
         <button
           onClick={onUndo}
           disabled={!canUndo}
+          aria-label="실행 취소 (Ctrl+Z)"
           className="p-2 rounded hover:bg-muted transition-colors disabled:opacity-30"
           title="Undo (Ctrl+Z)"
         >
@@ -362,6 +375,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
         <button
           onClick={onRedo}
           disabled={!canRedo}
+          aria-label="다시 실행 (Ctrl+Y)"
           className="p-2 rounded hover:bg-muted transition-colors disabled:opacity-30"
           title="Redo (Ctrl+Y)"
         >
@@ -373,6 +387,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
       <div className="flex items-center gap-1 border-r pr-2">
         <button
           onClick={onCopy}
+          aria-label="복사 (Ctrl+C)"
           className="p-2 rounded hover:bg-muted transition-colors"
           title="Copy (Ctrl+C)"
         >
@@ -380,6 +395,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
         </button>
         <button
           onClick={onPaste}
+          aria-label="붙여넣기 (Ctrl+V)"
           className="p-2 rounded hover:bg-muted transition-colors"
           title="Paste (Ctrl+V)"
         >
@@ -423,7 +439,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
     </div>
     {/* 현재 도구 설명 바 */}
     {activeToolInfo && (
-      <div className="flex items-center gap-2 px-3 py-1 border-t border-border/50 text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-2 px-3 py-1 border-t border-border/50 text-xs text-muted-foreground">
         <span className="font-semibold text-blue-400">{activeToolInfo.label}</span>
         <span className="text-border/60">|</span>
         <span>{activeToolInfo.description}</span>

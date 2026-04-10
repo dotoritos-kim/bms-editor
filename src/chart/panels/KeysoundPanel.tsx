@@ -216,9 +216,9 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
                   {folder && (
                     <button
                       onClick={() => toggleFolder(folder)}
-                      className="w-full flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-semibold text-zinc-500 bg-zinc-900/50 hover:bg-zinc-800/50 border-b border-border/30"
+                      className="w-full flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-zinc-400 bg-zinc-900/50 hover:bg-zinc-800/50 border-b border-border/30"
                     >
-                      <span className="text-[9px]">{collapsedFolders.has(folder) ? '▶' : '▼'}</span>
+                      <span className="text-xs">{collapsedFolders.has(folder) ? '▶' : '▼'}</span>
                       📁 {folder}
                       <span className="ml-auto text-zinc-600">{items.length}</span>
                     </button>
@@ -232,7 +232,7 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
                         className={cn('w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted/50 transition-colors text-left cursor-grab active:cursor-grabbing', folder && 'pl-5', currentKeysound === id && 'bg-primary/10 text-primary', isHighlighted && 'bg-orange-500/15 ring-1 ring-orange-500/40')}>
                         <span className="font-mono w-6 text-center shrink-0">{id}</span>
                         <span className={cn('truncate flex-1', usageCount === 0 ? 'text-zinc-600 line-through' : 'text-muted-foreground')}>{displayName}</span>
-                        {usageCount !== undefined && <span className={cn('text-[10px] shrink-0 tabular-nums', usageCount === 0 ? 'text-zinc-600' : 'text-muted-foreground')}>({usageCount})</span>}
+                        {usageCount !== undefined && <span className={cn('text-xs shrink-0 tabular-nums', usageCount === 0 ? 'text-zinc-600' : 'text-muted-foreground')}>({usageCount})</span>}
                         {isAudioLoading && <Loader2 className="h-3 w-3 animate-spin shrink-0 text-muted-foreground" />}
                       </button>
                     );
@@ -249,7 +249,7 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
                     className={cn('w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted/50 transition-colors text-left cursor-grab active:cursor-grabbing', currentKeysound === id && 'bg-primary/10 text-primary', isHighlighted && 'bg-orange-500/15 ring-1 ring-orange-500/40')}>
                     <span className="font-mono w-6 text-center shrink-0">{id}</span>
                     <span className={cn('truncate flex-1', usageCount === 0 ? 'text-zinc-600 line-through' : 'text-muted-foreground')}>{filename}</span>
-                    {usageCount !== undefined && <span className={cn('text-[10px] shrink-0 tabular-nums', usageCount === 0 ? 'text-zinc-600' : 'text-muted-foreground')}>({usageCount})</span>}
+                    {usageCount !== undefined && <span className={cn('text-xs shrink-0 tabular-nums', usageCount === 0 ? 'text-zinc-600' : 'text-muted-foreground')}>({usageCount})</span>}
                     {isAudioLoading && <Loader2 className="h-3 w-3 animate-spin shrink-0 text-muted-foreground" />}
                   </button>
                 );

@@ -337,7 +337,7 @@ export const Minimap = React.memo(function Minimap({
   return (
     <div className={cn('flex flex-col h-full', className)}>
       {!hideHeader && (
-        <div className="px-2 py-1 text-[10px] font-semibold text-zinc-400 uppercase tracking-wider border-b border-zinc-800 shrink-0">
+        <div className="px-2 py-1 text-xs font-semibold text-zinc-400 uppercase tracking-wider border-b border-zinc-800 shrink-0">
           Minimap
         </div>
       )}
