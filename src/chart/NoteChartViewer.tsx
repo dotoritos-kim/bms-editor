@@ -2955,7 +2955,12 @@ export function NoteChartViewer({
             setAudioProgress({ loaded, total });
           }
 
-          blob = new Blob(chunks as unknown as BlobPart[], { type: contentType || 'audio/wav' });
+          // Note: TS lib types `Uint8Array<ArrayBufferLike>` cannot be directly
+          // assigned to `BlobPart` because `ArrayBufferLike` includes
+          // `SharedArrayBuffer`. fetch reader always yields non-shared buffers,
+          // so a single narrowing cast (instead of the previous `as unknown as`
+          // double-cast) is sufficient and preserves byteOffset/byteLength.
+          blob = new Blob(chunks as BlobPart[], { type: contentType || 'audio/wav' });
         } else {
           blob = await response.blob();
         }

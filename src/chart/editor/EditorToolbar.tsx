@@ -28,6 +28,7 @@ import type { KeyMode } from '../NoteChartViewer';
 import {
   GRID_SNAP_OPTIONS,
   DEFAULT_NOTE_HEIGHT,
+  isPresetGridSnap,
   type EditorTool,
   type GridSnap,
   type EditorToolbarProps,
@@ -163,7 +164,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
           </form>
         ) : (
         <select
-          value={GRID_SNAP_OPTIONS.includes(gridSnap as any) ? gridSnap : 'custom'}
+          value={isPresetGridSnap(gridSnap) ? gridSnap : 'custom'}
           onChange={(e) => {
             const val = e.target.value;
             if (val === 'custom') {
@@ -186,7 +187,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
           <option value="custom">Custom...</option>
         </select>
         )}
-        {!showCustomGrid && !GRID_SNAP_OPTIONS.includes(gridSnap as any) && (
+        {!showCustomGrid && !isPresetGridSnap(gridSnap) && (
           <span className="text-xs text-yellow-400" title="Custom grid snap">{gridSnap}/m</span>
         )}
       </div>
