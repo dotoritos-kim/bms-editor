@@ -49,4 +49,4 @@ export { StatusBar } from './chart/panels/StatusBar';
 export { FilePickerCombobox } from './chart/panels/FilePickerCombobox';
 
 // Utility
-export { cn } from './utils';
+export { cn, getErrorMessage } from './utils';

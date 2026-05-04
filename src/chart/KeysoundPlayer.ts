@@ -7,6 +7,7 @@
  */
 
 import { AudioPreloader, type FileMap, type WorkerFactory, type AudioPreloaderOptions } from '@rhythm-archive/bms-player';
+import { getErrorMessage } from '../utils';
 
 /**
  * 모니터 프레임 주기를 측정하여 초 단위로 반환
@@ -240,7 +241,7 @@ export class KeysoundPlayer {
       this.options.onReady();
     } catch (error: unknown) {
       this.isLoading = false;
-      const message = error instanceof Error ? error.message : 'Failed to load keysounds';
+      const message = getErrorMessage(error, 'Failed to load keysounds');
       this.options.onError(message);
       throw error;
     }

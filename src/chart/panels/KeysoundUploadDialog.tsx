@@ -7,7 +7,7 @@
 
 import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { Upload, X, Music, Loader2, AlertCircle } from 'lucide-react';
-import { cn } from '../../utils';
+import { cn, getErrorMessage } from '../../utils';
 
 const ALLOWED_EXTENSIONS = ['.wav', '.ogg', '.mp3'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -197,7 +197,7 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
       setPendingFiles([]);
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '업로드 실패');
+      setError(getErrorMessage(err, '업로드 실패'));
     }
   }, [pendingFiles, existingWavDefinitions, onUpload, onUploadComplete, onClose]);
 
