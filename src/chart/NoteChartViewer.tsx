@@ -2746,7 +2746,7 @@ export function NoteChartViewer({
     }
   }, [findFirstNoteIndexAfterBeat]);
 
-  const baseLanes = useMemo(() => generateLaneConfig(keyMode), [keyMode]);
+  const baseLanes = useMemo(() => generateLaneConfig(keyMode, 1), [keyMode]);
   const unscaledLanes = useMemo(() => applyLaneOption(baseLanes, laneOption, randomSeed), [baseLanes, laneOption, randomSeed]);
   // baseChartWidth calculated from unscaled lanes
   const baseChartWidth = useMemo(() => unscaledLanes.reduce((sum, lane) => sum + lane.width, 0), [unscaledLanes]);
