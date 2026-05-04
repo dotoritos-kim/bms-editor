@@ -18,7 +18,7 @@ import { Text, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import type { Line2, LineSegments2 } from 'three-stdlib';
 import { Play, Pause, Maximize2, Minimize2, GripVertical, Volume2, VolumeX, ZoomIn, ZoomOut, RotateCcw, Settings, Eye, Bomb, Music, Ghost, FlipHorizontal, SkipBack, SkipForward, Loader2, LayoutGrid, Rows3, Map as MapIcon, Link2, Link2Off } from 'lucide-react';
-import { cn } from '../utils';
+import { cn, getErrorMessage } from '../utils';
 import type { BMSNote } from '@rhythm-archive/bms-core';
 import { Positioning, Timing } from '@rhythm-archive/bms-core';
 import { KeysoundPlayer } from './KeysoundPlayer';
@@ -2995,7 +2995,7 @@ export function NoteChartViewer({
         audio.load();
       } catch (error: unknown) {
         if (cancelled) return;
-        const errorMsg = error instanceof Error ? error.message : 'Network error';
+        const errorMsg = getErrorMessage(error, 'Network error');
         console.warn(`[NoteChartViewer] BGM load error:`, errorMsg);
         setAudioLoading(false);
         setAudioError(errorMsg);

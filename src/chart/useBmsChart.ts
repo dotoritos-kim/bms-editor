@@ -8,6 +8,7 @@ import { useState, useCallback } from 'react';
 import { BMSParser, BMSNote, Positioning, Timing } from '@rhythm-archive/bms-core';
 import type { ISongInfoData } from '@rhythm-archive/bms-core';
 import type { KeyMode } from './NoteChartViewer';
+import { getErrorMessage } from '../utils';
 
 /** BPM 변경 이벤트 */
 export interface BpmChange {
@@ -557,7 +558,7 @@ export function useBmsChart(options: UseBmsChartOptions): UseBmsChartReturn {
         isLoaded: true,
       });
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Failed to load chart';
+      const message = getErrorMessage(error, 'Failed to load chart');
       setState(prev => ({
         ...prev,
         isLoading: false,
