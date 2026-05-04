@@ -36,7 +36,7 @@ function defaultBeatScaleForKeyMode(keyMode: string): number {
   return 20;
 }
 import { NoteHeightContext, snapBeatToGrid, getBgmLaneId, isBgmLaneId, bgmLaneIdToChannel } from './editor/editorUtils';
-import { LanesRenderer, MeasureLinesRenderer, BpmMarkersRenderer, StopMarkersRenderer } from './editor/gridRenderers';
+import { LanesRenderer, MeasureLinesRenderer, BpmMarkersRenderer, StopMarkersRenderer, CurrentMeasureHighlight } from './editor/gridRenderers';
 import { NotesRenderer, HoverPreview, RubberBandRect, DragGhostNotes, NotePassEffect, EditorJudgmentLine } from './editor/noteRenderers';
 
 // Re-exports for backwards compatibility
@@ -717,6 +717,7 @@ function EditorCanvas({
         <meshBasicMaterial color="#0a0a1a" transparent opacity={0.01} />
       </mesh>
       <LanesRenderer lanes={lanes} totalHeight={totalHeight} keyMode={keyMode} />
+      <CurrentMeasureHighlight currentBeat={scrollBeat} totalWidth={totalWidth} beatScale={beatScale} timeSignatures={timeSignatures} />
       <MeasureLinesRenderer totalBeats={totalBeats} beatScale={beatScale} totalWidth={totalWidth} gridSnap={gridSnap} scrollBeat={scrollBeat} viewportBeats={size.height / beatScale} timeSignatures={timeSignatures} gridSnapOverrides={gridSnapOverrides} />
       <NotesRenderer notes={notes} lanes={lanes} beatScale={beatScale} selectedNotes={selectedNotes} offsetX={offsetX} scrollBeat={scrollBeat} viewportBeats={size.height / beatScale} scrollBeatImperativeRef={scrollBeatImperativeRef} layerConfig={layerConfig} highlightKeysound={highlightKeysound} customColors={customColors} />
       {activeTool === 'addNote' && !lnDragCreate && hoverPosition && (

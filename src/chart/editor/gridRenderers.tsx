@@ -92,6 +92,55 @@ export const TextLabels = React.memo(function TextLabels({
   );
 });
 
+/** 현재 마디 하이라이트 — scrollBeat(뷰포트 하단) 기준으로 해당 마디 전체를 반투명 밴드로 표시 */
+export const CurrentMeasureHighlight = React.memo(function CurrentMeasureHighlight({
+  currentBeat,
+  totalWidth,
+  beatScale,
+  timeSignatures,
+}: {
+  currentBeat: number;
+  totalWidth: number;
+  beatScale: number;
+  timeSignatures?: Map<number, number>;
+}) {
+  const { startBeat, measureBeats } = useMemo(() => {
+    let beat = 0;
+    let m = 0;
+    while (m < 9999) {
+      const size = timeSignatures?.get(m) ?? 1.0;
+      const beatsInMeasure = 4 * size;
+      if (beat + beatsInMeasure > currentBeat) break;
+      beat += beatsInMeasure;
+      m++;
+    }
+    const size = timeSignatures?.get(m) ?? 1.0;
+    return { startBeat: beat, measureBeats: 4 * size };
+  }, [currentBeat, timeSignatures]);
+
+  const height = measureBeats * beatScale;
+  const centerY = startBeat * beatScale + height / 2;
+
+  return (
+    <group>
+      <mesh position={[0, centerY, -4.5]} frustumCulled={false}>
+        <planeGeometry args={[totalWidth, height]} />
+        <meshBasicMaterial color="#4488ff" opacity={0.1} transparent depthWrite={false} />
+      </mesh>
+      {/* 상단 테두리 */}
+      <mesh position={[0, startBeat * beatScale + height, -4.4]} frustumCulled={false}>
+        <planeGeometry args={[totalWidth, 2]} />
+        <meshBasicMaterial color="#6699ff" opacity={0.7} transparent depthWrite={false} />
+      </mesh>
+      {/* 하단 테두리 */}
+      <mesh position={[0, startBeat * beatScale, -4.4]} frustumCulled={false}>
+        <planeGeometry args={[totalWidth, 2]} />
+        <meshBasicMaterial color="#6699ff" opacity={0.4} transparent depthWrite={false} />
+      </mesh>
+    </group>
+  );
+});
+
 /** @deprecated Use TextLabels instead */
 export const TextBatchStrip = React.memo(function TextBatchStrip({
   labels,
