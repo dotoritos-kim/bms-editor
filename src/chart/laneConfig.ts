@@ -209,21 +209,26 @@ export function generateLaneConfig(keyMode: KeyMode, bgmChannelCount?: number): 
     return lane;
   });
 
-  // BGM lanes at the right end (with gap)
-  const numBgmLanes = Math.max(1, bgmChannelCount ?? 1);
-  const bgmColors = ['#666666', '#7a6655', '#556677', '#667755', '#775566', '#557766', '#665577', '#776655'];
-  x += BGM_GAP;
-  for (let ch = 0; ch < numBgmLanes; ch++) {
-    lanes.push({
-      id: ch === 0 ? 'BGM' : `BGM${ch}`,
-      x,
-      width: BGM_LANE_WIDTH,
-      color: bgmColors[ch % bgmColors.length],
-      isScratch: false,
-      isBgm: true,
-      originalIndex: lanes.length,
-    });
-    x += BGM_LANE_WIDTH;
+  // BGM lanes at the right end (with gap).
+  // bgmChannelCount === undefined → 0 lanes (playable structure only — used by tests
+  // and by callers that filter out BGM via getLaneIds).
+  // bgmChannelCount === N (>= 0) → exactly N lanes.
+  const numBgmLanes = Math.max(0, bgmChannelCount ?? 0);
+  if (numBgmLanes > 0) {
+    const bgmColors = ['#666666', '#7a6655', '#556677', '#667755', '#775566', '#557766', '#665577', '#776655'];
+    x += BGM_GAP;
+    for (let ch = 0; ch < numBgmLanes; ch++) {
+      lanes.push({
+        id: ch === 0 ? 'BGM' : `BGM${ch}`,
+        x,
+        width: BGM_LANE_WIDTH,
+        color: bgmColors[ch % bgmColors.length],
+        isScratch: false,
+        isBgm: true,
+        originalIndex: lanes.length,
+      });
+      x += BGM_LANE_WIDTH;
+    }
   }
 
   return lanes;

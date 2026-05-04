@@ -90,7 +90,7 @@ export const NoteSearchDialog = React.memo(function NoteSearchDialog({
   const [selectedColumns, setSelectedColumns] = useState<Set<string>>(new Set());
   const [noteTypeFilter, setNoteTypeFilter] = useState('all');
 
-  const laneConfigs = useMemo(() => generateLaneConfig(keyMode), [keyMode]);
+  const laneConfigs = useMemo(() => generateLaneConfig(keyMode, 1), [keyMode]);
 
   const toggleColumn = useCallback((columnId: string) => {
     setSelectedColumns((prev) => {
