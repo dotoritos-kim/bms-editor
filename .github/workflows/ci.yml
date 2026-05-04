@@ -41,19 +41,19 @@ jobs:
         if: hashFiles('bms-core/package.json') != ''
         working-directory: bms-core
         run: |
-          npm ci || npm install
+          npm ci --legacy-peer-deps || npm install --legacy-peer-deps
           npm run build
 
       - name: Build bms-player
         if: hashFiles('bms-player/package.json') != ''
         working-directory: bms-player
         run: |
-          npm ci || npm install
+          npm ci --legacy-peer-deps || npm install --legacy-peer-deps
           npm run build
 
       - name: Install bms-editor dependencies
         working-directory: bms-editor
-        run: npm ci || npm install
+        run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
 
       - name: Type check
         working-directory: bms-editor
