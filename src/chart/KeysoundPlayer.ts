@@ -8,6 +8,7 @@
 
 import { AudioPreloader, type FileMap, type WorkerFactory, type AudioPreloaderOptions } from '@rhythm-archive/bms-player';
 import { getErrorMessage } from '../utils';
+import { narrowKeysoundWorkerMessage } from './workerMessages';
 
 /**
  * 모니터 프레임 주기를 측정하여 초 단위로 반환
@@ -140,26 +141,31 @@ export class KeysoundPlayer {
         this.fileMap,
         worker,
         (type: string, payload: unknown) => {
-          if (type === 'PROGRESS') {
-            const loaded = this.preloader?.downloadedCount ?? 0;
-            const total = this.preloader?.downloadedTotal ?? Object.keys(this.fileMap).length;
-            this.options.onProgress(loaded, total);
-          } else if (type === 'LOADED') {
-            // 성공적으로 로드된 키사운드 추적
-            const loadedPayload = payload as { key?: string } | undefined;
-            if (loadedPayload?.key) {
-              this._loadedKeysounds.add(loadedPayload.key.toLowerCase());
+          // Centralized boundary narrowing — see ./workerMessages.ts
+          const msg = narrowKeysoundWorkerMessage(type, payload);
+          if (!msg) return; // Ignore unknown shapes silently
+          switch (msg.type) {
+            case 'PROGRESS': {
+              const loaded = this.preloader?.downloadedCount ?? 0;
+              const total = this.preloader?.downloadedTotal ?? Object.keys(this.fileMap).length;
+              this.options.onProgress(loaded, total);
+              break;
             }
-          } else if (type === 'ERROR') {
-            // 로드 실패한 키사운드 추적
-            const errorPayload = payload as { key?: string; fileName?: string; message?: string } | undefined;
-            if (errorPayload?.key) {
+            case 'LOADED':
+              this._loadedKeysounds.add(msg.key.toLowerCase());
+              break;
+            case 'ERROR':
               this._failedKeysounds.set(
-                errorPayload.key.toLowerCase(),
-                `${errorPayload.fileName || 'unknown'}: ${errorPayload.message || 'Unknown error'}`
+                msg.key.toLowerCase(),
+                `${msg.fileName}: ${msg.message}`,
               );
-            }
-            console.warn('[KeysoundPlayer] Load failed:', errorPayload?.key, errorPayload?.fileName, errorPayload?.message);
+              console.warn(
+                '[KeysoundPlayer] Load failed:',
+                msg.key,
+                msg.fileName,
+                msg.message,
+              );
+              break;
           }
         },
         { ...this.preloaderOptions, latencyHint: frameDuration } // 프레임 주기 기반 레이턴시

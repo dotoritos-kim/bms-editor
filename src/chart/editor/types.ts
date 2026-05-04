@@ -21,7 +21,20 @@ export type SelectedNoteType = 'playable' | 'invisible' | 'landmine' | 'longNote
 
 // 그리드 스냅 옵션 (확장: 셋잇단 12/24 + 고정밀 128/256/384 추가)
 export const GRID_SNAP_OPTIONS = [4, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384] as const;
-export type GridSnap = (typeof GRID_SNAP_OPTIONS)[number] | number;
+export type GridSnapPreset = (typeof GRID_SNAP_OPTIONS)[number];
+export type GridSnap = GridSnapPreset | number;
+
+/**
+ * Type predicate for `GRID_SNAP_OPTIONS.includes(value)`.
+ *
+ * The `as const` tuple's `.includes()` is typed too narrowly to accept arbitrary
+ * `number` values, which previously forced `gridSnap as any` casts at call sites.
+ * This guard widens the comparison to `readonly number[]` while preserving the
+ * preset literal narrowing on the `true` branch.
+ */
+export function isPresetGridSnap(value: number): value is GridSnapPreset {
+  return (GRID_SNAP_OPTIONS as readonly number[]).includes(value);
+}
 
 // InstancedMesh 상수
 export const MAX_VISIBLE_EDITOR_NOTES = 3000;
