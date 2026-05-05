@@ -8,6 +8,7 @@
 import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { Upload, X, Music, Loader2, AlertCircle } from 'lucide-react';
 import { cn, getErrorMessage } from '../../utils';
+import { useI18n } from '../../i18n';
 
 const ALLOWED_EXTENSIONS = ['.wav', '.ogg', '.mp3'];
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -78,6 +79,7 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
   onUpload,
   isUploading = false,
 }: KeysoundUploadDialogProps) {
+  const { t } = useI18n();
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -96,18 +98,18 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
         const ext = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
 
         if (!ALLOWED_EXTENSIONS.includes(ext)) {
-          setError(`지원하지 않는 형식: ${file.name} (WAV/OGG/MP3만 가능)`);
+          setError(t('panels.keysound.uploadDialog.unsupportedFormat', { name: file.name }));
           continue;
         }
 
         if (file.size > MAX_FILE_SIZE) {
-          setError(`파일 크기 초과: ${file.name} (최대 10MB)`);
+          setError(t('panels.keysound.uploadDialog.fileTooLarge', { name: file.name }));
           continue;
         }
 
         totalSize += file.size;
         if (totalSize > MAX_TOTAL_SIZE) {
-          setError('총 업로드 크기가 50MB를 초과합니다');
+          setError(t('panels.keysound.uploadDialog.totalTooLarge'));
           break;
         }
 
@@ -131,7 +133,7 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
         setPendingFiles((prev) => [...prev, ...newPending]);
       }
     },
-    [pendingFiles, existingWavDefinitions]
+    [pendingFiles, existingWavDefinitions, t]
   );
 
   // 파일 삭제
@@ -169,7 +171,7 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
     const idSet = new Set<string>();
     for (const pf of pendingFiles) {
       if (idSet.has(pf.wavId) || existingWavDefinitions[pf.wavId]) {
-        setError(`WAV ID 중복: ${pf.wavId}`);
+        setError(t('panels.keysound.uploadDialog.duplicateWavId', { id: pf.wavId }));
         return;
       }
       idSet.add(pf.wavId);
@@ -184,7 +186,7 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
         }))
       );
 
-      await onUpload(fileData, `키음 파일 업로드 (${pendingFiles.length}개)`);
+      await onUpload(fileData, t('panels.keysound.uploadDialog.commitMessage', { count: pendingFiles.length }));
 
       // 성공: WAV 정의 콜백
       const wavDefs = pendingFiles.map((pf) => ({
@@ -197,9 +199,9 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
       setPendingFiles([]);
       onClose();
     } catch (err) {
-      setError(getErrorMessage(err, '업로드 실패'));
+      setError(getErrorMessage(err, t('panels.keysound.uploadDialog.uploadFailed')));
     }
-  }, [pendingFiles, existingWavDefinitions, onUpload, onUploadComplete, onClose]);
+  }, [pendingFiles, existingWavDefinitions, onUpload, onUploadComplete, onClose, t]);
 
   // 총 크기 계산
   const totalSize = useMemo(() => {
@@ -224,7 +226,7 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
         <div className="flex items-center justify-between px-4 py-3 border-b">
           <h3 className="text-sm font-semibold flex items-center gap-2">
             <Upload className="h-4 w-4" />
-            키음 파일 업로드
+            {t('panels.keysound.uploadDialog.title')}
           </h3>
           <button onClick={onClose} className="p-1 hover:bg-muted rounded">
             <X className="h-4 w-4" />
@@ -241,10 +243,10 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
           >
             <Music className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">
-              파일을 드래그하거나 클릭하여 선택
+              {t('panels.keysound.uploadDialog.dropPrompt')}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              WAV, OGG, MP3 (개별 최대 10MB, 총 50MB)
+              {t('panels.keysound.uploadDialog.formatHint')}
             </p>
           </div>
           <input
@@ -299,14 +301,14 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
         {/* 푸터 */}
         <div className="flex items-center justify-between px-4 py-3 border-t">
           <span className="text-xs text-muted-foreground">
-            {pendingFiles.length}개 파일 ({formatSize(totalSize)})
+            {t('panels.keysound.uploadDialog.fileCountSummary', { count: pendingFiles.length, size: formatSize(totalSize) })}
           </span>
           <div className="flex gap-2">
             <button
               onClick={onClose}
               className="px-3 py-1.5 text-xs rounded border hover:bg-muted"
             >
-              취소
+              {t('panels.keysound.uploadDialog.cancel')}
             </button>
             <button
               onClick={handleUpload}
@@ -319,7 +321,7 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
               )}
             >
               {isUploading && <Loader2 className="h-3 w-3 animate-spin" />}
-              업로드
+              {t('panels.keysound.uploadDialog.confirm')}
             </button>
           </div>
         </div>

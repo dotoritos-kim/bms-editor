@@ -11,8 +11,9 @@
  * - 검색: 각 탭 상단 필터
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { cn } from '../../utils';
+import { useI18n } from '../../i18n';
 import type { EditableBMSChart, BMSHeaderData } from '@rhythm-archive/bms-core';
 import { FilePickerCombobox } from './FilePickerCombobox';
 
@@ -166,6 +167,7 @@ function MapEditor({
   onSet, onDelete,
   addKey, addValue, onAddKeyChange, onAddValueChange, onAdd,
 }: MapEditorProps) {
+  const { t } = useI18n();
   // WAV/BMP 키는 BMS 스펙상 2자 이상 (예: "01", "ZZ")
   const minKeyLen = keyPrefix ? 2 : 1;
   const isKeyValid = addKey.trim().length >= minKeyLen;
@@ -178,7 +180,7 @@ function MapEditor({
     <div className="flex flex-col">
       {filtered.length === 0 && (
         <div className="px-3 py-5 text-xs text-muted-foreground text-center">
-          {search ? '검색 결과 없음' : '항목 없음'}
+          {search ? t('panels.header.common.noSearchResults') : t('panels.header.common.empty')}
         </div>
       )}
       {filtered.map(([key, value]) => (
@@ -209,7 +211,7 @@ function MapEditor({
             <button
               onClick={() => onDelete?.(key)}
               className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity px-0.5 text-sm leading-none shrink-0"
-              title="삭제"
+              title={t('panels.header.common.deleteTooltip')}
             >×</button>
           )}
         </div>
@@ -228,7 +230,7 @@ function MapEditor({
             type="text"
             value={addValue}
             onChange={(e) => onAddValueChange(e.target.value)}
-            placeholder="값"
+            placeholder={t('panels.header.common.valuePlaceholder')}
             className="flex-1 min-w-0 px-1 py-0.5 text-xs bg-muted rounded outline-none focus:ring-1 focus:ring-primary"
             onKeyDown={(e) => { if (e.key === 'Enter') onAdd(); }}
           />
@@ -261,11 +263,28 @@ export const HeaderEditorPanel = React.memo(function HeaderEditorPanel({
   imageFiles,
   className,
 }: HeaderEditorPanelProps) {
+  const { t } = useI18n();
   const [activeTab, setActiveTab] = useState<TabKey>('basic');
   const [search, setSearch] = useState('');
   const [rawText, setRawText] = useState('');
   const [addKey, setAddKey] = useState('');
   const [addValue, setAddValue] = useState('');
+
+  // Field labels are derived from the i18n provider; memoize so identity is
+  // stable across renders unless the locale changes.
+  const fieldLabel = useCallback(
+    (key: string, fallback: string): string => {
+      const translated = t(`panels.header.fields.${key}` as never);
+      // The fallback path returns the raw key when missing; in that case use
+      // the literal English fallback supplied at the call site.
+      return translated === `panels.header.fields.${key}` ? fallback : translated;
+    },
+    [t],
+  );
+
+  // HEADER_FIELDS is module-level (immutable label literals are English fallbacks).
+  // Keep that array as-is; resolve labels through `fieldLabel(field.key, field.label)`.
+  void useMemo;
 
   const switchTab = useCallback((tab: TabKey) => {
     if (tab === 'raw') setRawText(headersToRawText(chart.headers));
@@ -304,11 +323,11 @@ export const HeaderEditorPanel = React.memo(function HeaderEditorPanel({
   );
 
   const TABS: { key: TabKey; label: string; count?: number }[] = [
-    { key: 'basic',  label: '기본' },
-    { key: 'custom', label: '커스텀', count: chart.headers.custom.size },
-    { key: 'wav',    label: 'WAV',    count: chart.headers.wav.size },
-    { key: 'bmp',    label: 'BMP',    count: chart.headers.bmp.size },
-    { key: 'raw',    label: 'Raw' },
+    { key: 'basic',  label: t('panels.header.tabs.basic') },
+    { key: 'custom', label: t('panels.header.tabs.custom'), count: chart.headers.custom.size },
+    { key: 'wav',    label: t('panels.header.tabs.wav'),    count: chart.headers.wav.size },
+    { key: 'bmp',    label: t('panels.header.tabs.bmp'),    count: chart.headers.bmp.size },
+    { key: 'raw',    label: t('panels.header.tabs.raw') },
   ];
 
   return (
@@ -342,7 +361,7 @@ export const HeaderEditorPanel = React.memo(function HeaderEditorPanel({
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="검색..."
+            placeholder={t('panels.header.common.searchPlaceholder')}
             className="w-full px-2 py-0.5 text-xs bg-muted rounded outline-none focus:ring-1 focus:ring-primary"
           />
         </div>
@@ -352,7 +371,7 @@ export const HeaderEditorPanel = React.memo(function HeaderEditorPanel({
       {activeTab === 'raw' && (
         <div className="flex-1 min-h-0 flex flex-col p-2 gap-2">
           <p className="text-xs text-muted-foreground shrink-0">
-            모든 헤더를 직접 편집. 적용 시 현재 내용으로 교체됩니다.
+            {t('panels.header.common.rawHelp')}
           </p>
           <textarea
             value={rawText}
@@ -366,7 +385,7 @@ export const HeaderEditorPanel = React.memo(function HeaderEditorPanel({
               onClick={() => onRawApply?.(rawText)}
               className="shrink-0 px-3 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors"
             >
-              적용
+              {t('panels.header.common.applyButton')}
             </button>
           )}
         </div>
@@ -380,12 +399,12 @@ export const HeaderEditorPanel = React.memo(function HeaderEditorPanel({
           {activeTab === 'basic' && (
             <div className="p-3 space-y-3">
               {filteredBasic.length === 0 && (
-                <div className="text-xs text-muted-foreground text-center py-4">검색 결과 없음</div>
+                <div className="text-xs text-muted-foreground text-center py-4">{t('panels.header.common.noSearchResults')}</div>
               )}
               {filteredBasic.map((field) => (
                 <div key={field.key}>
                   <label className="text-xs text-muted-foreground block mb-1">
-                    #{field.key.toUpperCase()} — {field.label}
+                    #{field.key.toUpperCase()} — {fieldLabel(field.key, field.label)}
                   </label>
                   {field.type === 'select' && field.options ? (
                     <select

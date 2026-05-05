@@ -9,6 +9,7 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Search, Volume2, Loader2, VolumeX, Upload, Crosshair, Replace, Trash2, Highlighter } from 'lucide-react';
 import { cn } from '../../utils';
+import { useI18n } from '../../i18n';
 
 interface KeysoundPanelProps {
   /** WAV 정의 목록 (ID → 파일명) */
@@ -66,6 +67,7 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
   onSelectBgmNotes,
   className,
 }: KeysoundPanelProps) {
+  const { t } = useI18n();
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -160,12 +162,12 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
     <div ref={panelRef} className={cn('flex flex-col h-full relative', className)}>
       <div className="px-3 py-2 border-b">
         <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-semibold">키음</h3>
+          <h3 className="text-sm font-semibold">{t('panels.keysound.title')}</h3>
           {onUploadClick && (
             <button
               onClick={onUploadClick}
               className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-              title="키음 파일 업로드"
+              title={t('panels.keysound.uploadTooltip')}
             >
               <Upload className="h-3.5 w-3.5" />
             </button>
@@ -175,7 +177,7 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <input
             type="text"
-            placeholder="검색..."
+            placeholder={t('panels.keysound.searchPlaceholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-7 pr-2 py-1 text-xs bg-muted rounded border-0 focus:ring-1 focus:ring-primary"
@@ -198,14 +200,14 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
             >
               <span className="font-mono w-6 text-center shrink-0">00</span>
               <VolumeX className="h-3 w-3 shrink-0 text-muted-foreground" />
-              <span className="truncate flex-1 text-muted-foreground italic">무음 / No Sound</span>
+              <span className="truncate flex-1 text-muted-foreground italic">{t('panels.keysound.noSilent')}</span>
             </button>
           </div>
         )}
 
         {entries.length === 0 ? (
           <div className="p-4 text-center text-xs text-muted-foreground">
-            {searchQuery ? '검색 결과 없음' : '키음이 없습니다'}
+            {searchQuery ? t('panels.keysound.noSearchResults') : t('panels.keysound.empty')}
           </div>
         ) : (
           <div className="divide-y">
@@ -260,8 +262,8 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
       </div>
 
       <div className="px-3 py-2 border-t text-xs text-muted-foreground">
-        {Object.keys(keysounds).length}개 키음
-        {searchQuery && ` (${entries.length}개 필터)`}
+        {t('panels.keysound.countSummary', { count: Object.keys(keysounds).length })}
+        {searchQuery && ` ${t('panels.keysound.filteredSummary', { count: entries.length })}`}
       </div>
 
       {/* 컨텍스트 메뉴 */}
@@ -277,7 +279,7 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
               onClick={() => { onFindNotes(contextMenu.keysoundId); setContextMenu(null); }}
             >
               <Crosshair className="h-3 w-3" />
-              이 키음 사용 노트 찾기
+              {t('panels.keysound.contextMenu.findNotes')}
             </button>
           )}
           {onHighlightKeysound && (
@@ -289,7 +291,7 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
               }}
             >
               <Highlighter className="h-3 w-3" />
-              {highlightKeysound === contextMenu.keysoundId ? '하이라이트 해제' : '차트에서 하이라이트'}
+              {highlightKeysound === contextMenu.keysoundId ? t('panels.keysound.contextMenu.highlightOff') : t('panels.keysound.contextMenu.highlightOn')}
             </button>
           )}
           {onSelectBgmNotes && (
@@ -298,7 +300,7 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
               onClick={() => { onSelectBgmNotes(contextMenu.keysoundId); setContextMenu(null); }}
             >
               <Volume2 className="h-3 w-3" />
-              이 키음 BGM 노트 선택
+              {t('panels.keysound.contextMenu.selectBgm')}
             </button>
           )}
           {onReplaceKeysound && (
@@ -307,7 +309,7 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
               onClick={() => { onReplaceKeysound(contextMenu.keysoundId); setContextMenu(null); }}
             >
               <Replace className="h-3 w-3" />
-              키음 일괄 교체...
+              {t('panels.keysound.contextMenu.replace')}
             </button>
           )}
           {onDeleteUnused && (keysoundUsageCounts?.[contextMenu.keysoundId] ?? 1) === 0 && (
@@ -316,7 +318,7 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
               onClick={() => { onDeleteUnused(contextMenu.keysoundId); setContextMenu(null); }}
             >
               <Trash2 className="h-3 w-3" />
-              미사용 키음 삭제
+              {t('panels.keysound.contextMenu.deleteUnused')}
             </button>
           )}
         </div>
