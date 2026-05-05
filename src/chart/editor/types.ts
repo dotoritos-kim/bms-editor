@@ -5,6 +5,18 @@
 import type { EditableBMSNote, BMSBpmChange, BMSStopEvent } from '@rhythm-archive/bms-core';
 import type { KeyMode } from '../NoteChartViewer';
 import type { LaneConfig } from '../laneConfig';
+import type { LayerConfig } from './layers';
+
+// Re-export shared layer types so callers using `from './editor/types'` still
+// resolve `LayerConfig` / `LayerKey` / `LayerSettings` without a deeper import.
+export type { LayerKey, LayerSettings, LayerConfig } from './layers';
+export {
+  DEFAULT_LAYER_SETTINGS,
+  DEFAULT_LAYER_CONFIG,
+  isLayerInteractable,
+  isLayerVisible,
+  getLayerOpacity,
+} from './layers';
 
 // 에디터 도구 타입
 export type EditorTool =
@@ -110,12 +122,7 @@ export interface NoteChartEditorProps {
   /** 마디별 gridSnap 오버라이드 */
   gridSnapOverrides?: Map<number, number>;
   /** 레이어별 가시성/잠금/불투명도 설정 */
-  layerConfig?: {
-    playable: { visible: boolean; locked: boolean; opacity: number };
-    invisible: { visible: boolean; locked: boolean; opacity: number };
-    landmine: { visible: boolean; locked: boolean; opacity: number };
-    bgm: { visible: boolean; locked: boolean; opacity: number };
-  };
+  layerConfig?: LayerConfig;
   /** BGM 채널 수 (멀티 BGM 레인 생성용, 기본값 1) */
   bgmChannelCount?: number;
 
@@ -187,12 +194,7 @@ export interface EditorToolbarProps {
   snapEnabled?: boolean;
   onSnapToggle?: () => void;
   // Layer
-  layerConfig?: {
-    playable: { visible: boolean; locked: boolean; opacity: number };
-    invisible: { visible: boolean; locked: boolean; opacity: number };
-    landmine: { visible: boolean; locked: boolean; opacity: number };
-    bgm: { visible: boolean; locked: boolean; opacity: number };
-  };
+  layerConfig?: LayerConfig;
   onLayerVisibleToggle?: (layer: string) => void;
   onLayerLockToggle?: (layer: string) => void;
   // Zoom

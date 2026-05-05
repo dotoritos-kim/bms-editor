@@ -18,7 +18,7 @@ import {
   MAX_ACTIVE_FLASH,
   NOTE_PADDING,
 } from './types';
-import type { CustomNoteColors } from './types';
+import type { CustomNoteColors, LayerConfig, LayerKey } from './types';
 import { useNoteHeight, getLaneColorHex, getNoteColorHex, getSelectionColorHex, getBgmLaneId, isBgmLaneId, _dummy, _color } from './editorUtils';
 import { TextLabels } from './gridRenderers';
 
@@ -46,12 +46,7 @@ export const NotesRenderer = React.memo(function NotesRenderer({
   scrollBeat: number;
   viewportBeats: number;
   scrollBeatImperativeRef?: React.RefObject<number>;
-  layerConfig?: {
-    playable: { visible: boolean; locked: boolean; opacity: number };
-    invisible: { visible: boolean; locked: boolean; opacity: number };
-    landmine: { visible: boolean; locked: boolean; opacity: number };
-    bgm: { visible: boolean; locked: boolean; opacity: number };
-  };
+  layerConfig?: LayerConfig;
   highlightKeysound?: string | null;
   /** WAV duration (keysoundId → seconds) for BGM tail visualization */
   wavDurations?: Map<string, number>;
@@ -140,7 +135,7 @@ export const NotesRenderer = React.memo(function NotesRenderer({
       if (noteCount >= MAX_VISIBLE_EDITOR_NOTES) break;
 
       // Layer visibility filter
-      const noteLayer = (note.noteType || 'playable') as 'playable' | 'invisible' | 'landmine' | 'bgm';
+      const noteLayer = (note.noteType || 'playable') as LayerKey;
       const layerSettings = layerConfig?.[noteLayer];
       if (layerSettings && !layerSettings.visible) continue;
 
@@ -418,10 +413,7 @@ const BgmLabels = React.memo(function BgmLabels({
   scrollBeat: number;
   viewportBeats: number;
   offsetX: number;
-  layerConfig?: {
-    bgm: { visible: boolean; locked: boolean; opacity: number };
-    [key: string]: { visible: boolean; locked: boolean; opacity: number };
-  };
+  layerConfig?: LayerConfig;
 }) {
   const bgmVisible = layerConfig?.bgm?.visible ?? true;
   const bgmLanes = useMemo(() => lanes.filter((l) => l.isBgm), [lanes]);

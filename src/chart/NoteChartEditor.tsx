@@ -21,9 +21,11 @@ import { generateLaneConfig } from './laneConfig';
 // Sub-module imports
 import {
   DEFAULT_NOTE_HEIGHT,
+  isLayerInteractable,
   type NoteChartEditorProps,
   type CoordConverter,
   type ZoomControl,
+  type LayerKey,
 } from './editor/types';
 
 /** 키모드별 기본 beatScale (px/beat) */
@@ -41,8 +43,25 @@ import { NotesRenderer, HoverPreview, RubberBandRect, DragGhostNotes, NotePassEf
 
 // Re-exports for backwards compatibility
 export { EditorToolbar } from './editor/EditorToolbar';
-export { GRID_SNAP_OPTIONS } from './editor/types';
-export type { EditorTool, SelectedNoteType, GridSnap, NoteChartEditorProps, ZoomControl, CustomNoteColors } from './editor/types';
+export {
+  GRID_SNAP_OPTIONS,
+  DEFAULT_LAYER_SETTINGS,
+  DEFAULT_LAYER_CONFIG,
+  isLayerInteractable,
+  isLayerVisible,
+  getLayerOpacity,
+} from './editor/types';
+export type {
+  EditorTool,
+  SelectedNoteType,
+  GridSnap,
+  NoteChartEditorProps,
+  ZoomControl,
+  CustomNoteColors,
+  LayerKey,
+  LayerSettings,
+  LayerConfig,
+} from './editor/types';
 
 /** 에디터 캔버스 내부 컴포넌트 */
 function EditorCanvas({
@@ -370,9 +389,8 @@ function EditorCanvas({
         notes.find(
           (note) => {
             // Skip notes on locked/hidden layers
-            const noteLayer = (note.noteType || 'playable') as keyof NonNullable<typeof layerConfig>;
-            const ls = layerConfig?.[noteLayer];
-            if (ls && (!ls.visible || ls.locked)) return false;
+            const noteLayer = (note.noteType || 'playable') as LayerKey;
+            if (!isLayerInteractable(noteLayer, layerConfig)) return false;
             if (bgmLane) {
               return note.noteType === 'bgm' && getBgmLaneId(note) === column &&
                 Math.abs(note.beat - rawBeat) < clickTolerance;
