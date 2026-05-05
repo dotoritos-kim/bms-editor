@@ -11,8 +11,27 @@ export { NoteChartViewer, KEY_MODE_DISPLAY } from './chart';
 export type { NoteChartViewerProps, KeyMode, NoteTypeFilter, ViewMode, BpmChange, StopEvent, ScrollSpeedChange } from './chart';
 
 // Chart Editor
-export { NoteChartEditor, EditorToolbar, GRID_SNAP_OPTIONS } from './chart';
-export type { NoteChartEditorProps, EditorTool, SelectedNoteType, GridSnap, CustomNoteColors, ZoomControl } from './chart';
+export {
+  NoteChartEditor,
+  EditorToolbar,
+  GRID_SNAP_OPTIONS,
+  DEFAULT_LAYER_SETTINGS,
+  DEFAULT_LAYER_CONFIG,
+  isLayerInteractable,
+  isLayerVisible,
+  getLayerOpacity,
+} from './chart';
+export type {
+  NoteChartEditorProps,
+  EditorTool,
+  SelectedNoteType,
+  GridSnap,
+  CustomNoteColors,
+  ZoomControl,
+  LayerKey,
+  LayerSettings,
+  LayerConfig,
+} from './chart';
 
 // Chart Diff
 export { BmsChartDiff } from './chart';

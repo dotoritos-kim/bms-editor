@@ -31,7 +31,16 @@ export { generateLaneConfig, getLaneIds, getDpSplitIndex } from './laneConfig';
 export type { LaneConfig } from './laneConfig';
 
 // Chart Editor
-export { NoteChartEditor, EditorToolbar, GRID_SNAP_OPTIONS } from './NoteChartEditor';
+export {
+  NoteChartEditor,
+  EditorToolbar,
+  GRID_SNAP_OPTIONS,
+  DEFAULT_LAYER_SETTINGS,
+  DEFAULT_LAYER_CONFIG,
+  isLayerInteractable,
+  isLayerVisible,
+  getLayerOpacity,
+} from './NoteChartEditor';
 export type {
   NoteChartEditorProps,
   EditorTool,
@@ -39,6 +48,9 @@ export type {
   GridSnap,
   CustomNoteColors,
   ZoomControl,
+  LayerKey,
+  LayerSettings,
+  LayerConfig,
 } from './NoteChartEditor';
 
 // Editor Panels
