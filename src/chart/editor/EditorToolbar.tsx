@@ -24,6 +24,7 @@ import {
   Maximize2,
 } from 'lucide-react';
 import { cn } from '../../utils';
+import { useI18n } from '../../i18n';
 import type { KeyMode } from '../NoteChartViewer';
 import {
   GRID_SNAP_OPTIONS,
@@ -35,6 +36,21 @@ import {
 } from './types';
 
 const KEY_MODE_OPTIONS: KeyMode[] = ['4K', '5K', '6K', '7K', '8K', '9K', '10K', '12K', '14K', '18K', '24K', '48K'];
+
+const KEY_MODE_LABELS: Record<KeyMode, string> = {
+  '4K':  '4K (유이팩: SC+1,2,4,5+FZ)',
+  '5K':  '5K (SC+1-5+FZ)',
+  '6K':  '6K (에리팩: SC+1,2,3,5,6,7+FZ)',
+  '7K':  '7K (SC+1-7+FZ)',
+  '8K':  '8K',
+  '9K':  '9K (PMS)',
+  '10K': '10K (DP)',
+  '12K': '12K (DP)',
+  '14K': '14K (DP)',
+  '18K': '18K (DP)',
+  '24K': '24K',
+  '48K': '48K',
+};
 
 export const EditorToolbar = React.memo(function EditorToolbar({
   activeTool,
@@ -68,6 +84,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
   onZoomFit,
   currentBeatScale,
 }: EditorToolbarProps) {
+  const { t } = useI18n();
   const [showZoomPreset, setShowZoomPreset] = React.useState(false);
   const [showCustomGrid, setShowCustomGrid] = React.useState(false);
   const customGridInputRef = useRef<HTMLInputElement>(null);
@@ -82,13 +99,13 @@ export const EditorToolbar = React.memo(function EditorToolbar({
   }, [showZoomPreset]);
 
   const tools: { id: EditorTool; icon: React.ReactNode; label: string; shortcut: string; description: string }[] = [
-    { id: 'select', icon: <MousePointer2 size={16} />, label: '선택', shortcut: 'V', description: '클릭/드래그로 노트를 선택합니다. Shift+클릭으로 추가 선택.' },
-    { id: 'addNote', icon: <Plus size={16} />, label: '추가', shortcut: 'A', description: '클릭한 위치에 새 노트를 배치합니다.' },
-    { id: 'delete', icon: <Trash2 size={16} />, label: '삭제', shortcut: 'D', description: '클릭한 노트를 삭제합니다.' },
-    { id: 'move', icon: <Move size={16} />, label: '이동', shortcut: 'M', description: '선택한 노트를 드래그하거나 방향키로 이동합니다.' },
-    { id: 'keysound', icon: <Music size={16} />, label: '키음', shortcut: 'K', description: '노트를 클릭하여 현재 키음을 할당합니다.' },
-    { id: 'bpm', icon: <Gauge size={16} />, label: 'BPM', shortcut: 'B', description: '클릭한 위치에 BPM 변경을 추가/편집합니다.' },
-    { id: 'stop', icon: <Timer size={16} />, label: 'STOP', shortcut: 'T', description: '클릭한 위치에 STOP 이벤트를 추가/편집합니다.' },
+    { id: 'select', icon: <MousePointer2 size={16} />, label: t('toolbar.tools.select.label'), shortcut: 'V', description: t('toolbar.tools.select.description') },
+    { id: 'addNote', icon: <Plus size={16} />, label: t('toolbar.tools.addNote.label'), shortcut: 'A', description: t('toolbar.tools.addNote.description') },
+    { id: 'delete', icon: <Trash2 size={16} />, label: t('toolbar.tools.delete.label'), shortcut: 'D', description: t('toolbar.tools.delete.description') },
+    { id: 'move', icon: <Move size={16} />, label: t('toolbar.tools.move.label'), shortcut: 'M', description: t('toolbar.tools.move.description') },
+    { id: 'keysound', icon: <Music size={16} />, label: t('toolbar.tools.keysound.label'), shortcut: 'K', description: t('toolbar.tools.keysound.description') },
+    { id: 'bpm', icon: <Gauge size={16} />, label: t('toolbar.tools.bpm.label'), shortcut: 'B', description: t('toolbar.tools.bpm.description') },
+    { id: 'stop', icon: <Timer size={16} />, label: t('toolbar.tools.stop.label'), shortcut: 'T', description: t('toolbar.tools.stop.description') },
   ];
 
   const noteTypes: { id: typeof selectedNoteType; label: string }[] = [
@@ -131,7 +148,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
 
       {/* 그리드 스냅 */}
       <div className="flex items-center gap-1 border-r pr-2">
-        <span className="text-xs text-muted-foreground">Grid:</span>
+        <span className="text-xs text-muted-foreground">{t('toolbar.labels.grid')}</span>
         {showCustomGrid ? (
           <form
             onSubmit={(e) => {
@@ -188,7 +205,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
         </select>
         )}
         {!showCustomGrid && !isPresetGridSnap(gridSnap) && (
-          <span className="text-xs text-yellow-400" title="Custom grid snap">{gridSnap}/m</span>
+          <span className="text-xs text-yellow-400" title={t('toolbar.labels.customGridSnapTooltip')}>{gridSnap}/m</span>
         )}
       </div>
 
@@ -198,16 +215,16 @@ export const EditorToolbar = React.memo(function EditorToolbar({
           <button
             onClick={onSnapToggle}
             aria-pressed={snapEnabled}
-            aria-label={`그리드 스냅 ${snapEnabled ? '켜짐' : '꺼짐'}`}
+            aria-label={snapEnabled ? t('toolbar.labels.snapAriaOn') : t('toolbar.labels.snapAriaOff')}
             className={cn(
               'px-2 py-1 text-xs rounded transition-colors',
               snapEnabled
                 ? 'bg-green-600 text-white'
                 : 'bg-muted text-muted-foreground'
             )}
-            title={`Snap to Grid: ${snapEnabled ? 'ON' : 'OFF'} (Shift 드래그=임시 해제)`}
+            title={t('toolbar.labels.snapToggleTooltip', { state: snapEnabled ? t('toolbar.labels.snapStateOn') : t('toolbar.labels.snapStateOff') })}
           >
-            Snap {snapEnabled ? 'ON' : 'OFF'}
+            {snapEnabled ? t('toolbar.labels.snapOn') : t('toolbar.labels.snapOff')}
           </button>
         </div>
       )}
@@ -225,13 +242,17 @@ export const EditorToolbar = React.memo(function EditorToolbar({
                 onClick={() => onLayerVisibleToggle(layer)}
                 onContextMenu={(e) => { e.preventDefault(); onLayerLockToggle?.(layer); }}
                 aria-pressed={lc.visible}
-                aria-label={`${layer} 레이어 ${lc.visible ? '표시중' : '숨김'}${lc.locked ? ' (잠금)' : ''}`}
+                aria-label={t('toolbar.layer.ariaState', {
+                  layer,
+                  state: lc.visible ? t('toolbar.layer.visible') : t('toolbar.layer.hidden'),
+                  lockSuffix: lc.locked ? t('toolbar.layer.lockedSuffix') : '',
+                })}
                 className={cn(
                   'w-7 h-7 text-xs font-bold rounded transition-colors',
                   !lc.visible ? 'opacity-30 bg-muted' : lc.locked ? 'ring-1 ring-red-400' : ''
                 )}
                 style={{ backgroundColor: lc.visible ? colors[layer] + '40' : undefined, color: colors[layer] }}
-                title={`${layer}: ${lc.visible ? 'visible' : 'hidden'}${lc.locked ? ' (locked)' : ''}\n좌클릭=가시성, 우클릭=잠금`}
+                title={`${layer}: ${lc.visible ? t('toolbar.layer.titleVisible') : t('toolbar.layer.titleHidden')}${lc.locked ? t('toolbar.layer.titleLocked') : ''}\n${t('toolbar.layer.contextHint')}`}
               >
                 {labels[layer]}
               </button>
@@ -243,7 +264,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
       {/* 노트 두께 */}
       {onNoteHeightChange && (
         <div className="flex items-center gap-1 border-r pr-2">
-          <span className="text-xs text-muted-foreground" title="노트 두께">두께:</span>
+          <span className="text-xs text-muted-foreground" title={t('toolbar.labels.thicknessTooltip')}>{t('toolbar.labels.thickness')}:</span>
           <input
             type="range"
             min={1}
@@ -252,7 +273,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
             value={noteHeight}
             onChange={(e) => onNoteHeightChange(parseFloat(e.target.value))}
             className="w-14 h-1 accent-blue-500"
-            title={`노트 두께: ${noteHeight}`}
+            title={t('toolbar.labels.thicknessValueTooltip', { value: noteHeight })}
           />
           <span className="text-xs text-muted-foreground w-5">{noteHeight}</span>
         </div>
@@ -261,33 +282,33 @@ export const EditorToolbar = React.memo(function EditorToolbar({
       {/* 줌 컨트롤 */}
       {(onZoomIn || onZoomOut) && (
         <div className="flex items-center gap-1 border-r pr-2">
-          <span className="text-xs text-muted-foreground" title="줌 배율">줌:</span>
+          <span className="text-xs text-muted-foreground" title={t('toolbar.labels.zoomTooltip')}>{t('toolbar.labels.zoom')}:</span>
           <button
             onClick={onZoomOut}
             disabled={currentBeatScale !== undefined && currentBeatScale <= 2}
-            aria-label="축소"
+            aria-label={t('toolbar.actions.zoomOutAria')}
             className="p-1.5 rounded hover:bg-muted transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-            title="축소 (-)"
+            title={t('toolbar.actions.zoomOutTooltip')}
           >
             <ZoomOut size={14} />
           </button>
           <div className="relative" ref={zoomPresetRef}>
             <button
               onClick={() => setShowZoomPreset((v) => !v)}
-              aria-label="줌 배율 프리셋"
+              aria-label={t('toolbar.labels.zoomScalePresetTooltip')}
               aria-expanded={showZoomPreset}
               aria-haspopup="listbox"
               className="w-10 text-xs text-center text-muted-foreground hover:text-foreground px-1"
-              title="줌 배율 (클릭: 프리셋)"
+              title={t('toolbar.labels.zoomScalePresetTooltip')}
             >
               {currentBeatScale ?? 20}
             </button>
             {showZoomPreset && (
               <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 bg-popover border border-border rounded shadow-md z-50 py-1 min-w-[100px]">
                 {[
-                  { label: 'Overview', scale: 5 },
-                  { label: 'Work', scale: 20 },
-                  { label: 'Detail', scale: 80 },
+                  { label: t('toolbar.presets.overview'), scale: 5 },
+                  { label: t('toolbar.presets.work'), scale: 20 },
+                  { label: t('toolbar.presets.detail'), scale: 80 },
                 ].map((p) => (
                   <button
                     key={p.scale}
@@ -306,18 +327,18 @@ export const EditorToolbar = React.memo(function EditorToolbar({
           <button
             onClick={onZoomIn}
             disabled={currentBeatScale !== undefined && currentBeatScale >= 200}
-            aria-label="확대"
+            aria-label={t('toolbar.actions.zoomInAria')}
             className="p-1.5 rounded hover:bg-muted transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-            title="확대 (=)"
+            title={t('toolbar.actions.zoomInTooltip')}
           >
             <ZoomIn size={14} />
           </button>
           {onZoomFit && (
             <button
               onClick={onZoomFit}
-              aria-label="차트 전체 보기"
+              aria-label={t('toolbar.actions.zoomFitAria')}
               className="p-1.5 rounded hover:bg-muted transition-colors"
-              title="차트 전체 보기"
+              title={t('toolbar.labels.zoomFitTooltip')}
             >
               <Maximize2 size={14} />
             </button>
@@ -328,7 +349,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
       {/* 키 모드 */}
       {keyMode && onKeyModeChange && (
         <div className="flex items-center gap-1 border-r pr-2">
-          <span className="text-xs text-muted-foreground" title="키 모드">모드:</span>
+          <span className="text-xs text-muted-foreground" title={t('toolbar.labels.keyModeTooltip')}>{t('toolbar.labels.keyMode')}:</span>
           <select
             value={keyMode}
             onChange={(e) => onKeyModeChange(e.target.value as KeyMode)}
@@ -336,7 +357,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
           >
             {KEY_MODE_OPTIONS.map((mode) => (
               <option key={mode} value={mode}>
-                {mode}
+                {KEY_MODE_LABELS[mode]}
               </option>
             ))}
           </select>
@@ -367,18 +388,18 @@ export const EditorToolbar = React.memo(function EditorToolbar({
         <button
           onClick={onUndo}
           disabled={!canUndo}
-          aria-label="실행 취소 (Ctrl+Z)"
+          aria-label={t('toolbar.actions.undoAria')}
           className="p-2 rounded hover:bg-muted transition-colors disabled:opacity-30"
-          title="Undo (Ctrl+Z)"
+          title={t('toolbar.actions.undoAria')}
         >
           <Undo2 size={18} />
         </button>
         <button
           onClick={onRedo}
           disabled={!canRedo}
-          aria-label="다시 실행 (Ctrl+Y)"
+          aria-label={t('toolbar.actions.redoAria')}
           className="p-2 rounded hover:bg-muted transition-colors disabled:opacity-30"
-          title="Redo (Ctrl+Y)"
+          title={t('toolbar.actions.redoAria')}
         >
           <Redo2 size={18} />
         </button>
@@ -388,17 +409,17 @@ export const EditorToolbar = React.memo(function EditorToolbar({
       <div className="flex items-center gap-1 border-r pr-2">
         <button
           onClick={onCopy}
-          aria-label="복사 (Ctrl+C)"
+          aria-label={t('toolbar.actions.copyAria')}
           className="p-2 rounded hover:bg-muted transition-colors"
-          title="Copy (Ctrl+C)"
+          title={t('toolbar.actions.copyAria')}
         >
           <Copy size={18} />
         </button>
         <button
           onClick={onPaste}
-          aria-label="붙여넣기 (Ctrl+V)"
+          aria-label={t('toolbar.actions.pasteAria')}
           className="p-2 rounded hover:bg-muted transition-colors"
-          title="Paste (Ctrl+V)"
+          title={t('toolbar.actions.pasteAria')}
         >
           <Clipboard size={18} />
         </button>
@@ -421,10 +442,10 @@ export const EditorToolbar = React.memo(function EditorToolbar({
                 ? 'bg-yellow-500 text-yellow-950 hover:bg-yellow-400'
                 : 'bg-muted hover:bg-muted/80 text-muted-foreground'
             )}
-            title="저장 (Ctrl+S)"
+            title={t('toolbar.actions.saveTooltip')}
           >
             <Save size={16} />
-            {hasUnsavedChanges ? '저장' : '저장됨'}
+            {hasUnsavedChanges ? t('toolbar.save') : t('toolbar.saved')}
           </button>
         )}
         {onCreatePR && (
