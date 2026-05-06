@@ -56,6 +56,11 @@ export interface UseViewerPlaybackOptions {
    * (미구현 시 undefined 로 두면 seek 시 스킵됨)
    */
   playActiveKeysoundsAtBeat?: (seekBeat: number, calculateTimeAtBeatFn: (beat: number) => number) => void;
+  /**
+   * 외부에서 주입하는 playedNotesRef (useKeysoundTrigger가 소유).
+   * 주입 시 이 훅은 자체 ref 대신 주입된 ref를 사용합니다.
+   */
+  playedNotesRef?: MutableRefObject<Set<string>>;
 }
 
 export interface UseViewerPlaybackReturn {
@@ -95,6 +100,7 @@ export function useViewerPlayback({
   setSchedulingOverhead,
   triggerKeysoundsInRange,
   playActiveKeysoundsAtBeat,
+  playedNotesRef: externalPlayedNotesRef,
 }: UseViewerPlaybackOptions): UseViewerPlaybackReturn {
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackBeat, setPlaybackBeat] = useState(0);
@@ -103,7 +109,9 @@ export function useViewerPlayback({
   const playbackBeatRef = useRef(0);
   const lastTimeRef = useRef<number>(0);
   const lastPlayedBeatRef = useRef<number>(-1);
-  const playedNotesRef = useRef<Set<string>>(new Set());
+  const _internalPlayedNotesRef = useRef<Set<string>>(new Set());
+  // Use external ref if provided (owned by useKeysoundTrigger), otherwise fallback to internal
+  const playedNotesRef = externalPlayedNotesRef ?? _internalPlayedNotesRef;
   const contextStartTimeRef = useRef(0);
   const startBeatRef = useRef(0);
   const wasPlayingRef = useRef(false);
