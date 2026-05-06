@@ -18,11 +18,14 @@ import { Text, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import type { Line2, LineSegments2 } from 'three-stdlib';
 import { Play, Pause, Maximize2, Minimize2, GripVertical, Volume2, VolumeX, ZoomIn, ZoomOut, RotateCcw, Settings, Eye, Bomb, Music, Ghost, FlipHorizontal, SkipBack, SkipForward, Loader2, LayoutGrid, Rows3, Map as MapIcon, Link2, Link2Off } from 'lucide-react';
-import { cn, getErrorMessage } from '../utils';
+import { cn } from '../utils';
 import type { BMSNote } from '@rhythm-archive/bms-core';
 import { Positioning, Timing } from '@rhythm-archive/bms-core';
 import { KeysoundPlayer } from './KeysoundPlayer';
 import { generateLaneConfig, getLaneBackground, type LaneConfig } from './laneConfig';
+import { useBgmAudio } from './viewer/hooks/useBgmAudio';
+import { useKeysoundLifecycle } from './viewer/hooks/useKeysoundLifecycle';
+import { useFullscreen } from './viewer/hooks/useFullscreen';
 
 /** Equalizer band setting */
 interface EqualizerBand {
@@ -2380,10 +2383,9 @@ export function NoteChartViewer({
 }: NoteChartViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const outerContainerRef = useRef<HTMLDivElement>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  // audioRef, keysoundPlayerRef는 훅(useBgmAudio / useKeysoundLifecycle)에서 반환됨
   const animationRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
-  const keysoundPlayerRef = useRef<KeysoundPlayer | null>(null);
   const lastPlayedBeatRef = useRef<number>(-1);
   const playedNotesRef = useRef<Set<string>>(new Set());
   const notesRef = useRef(notes);
@@ -2428,14 +2430,7 @@ export function NoteChartViewer({
   // Web Audio 기반 정밀 동기화를 위한 refs
   const contextStartTimeRef = useRef(0); // 재생 시작 시점의 AudioContext.currentTime
   const startBeatRef = useRef(0); // 재생 시작 시점의 비트
-  const [audioLoaded, setAudioLoaded] = useState(false);
-  const [audioLoading, setAudioLoading] = useState(false);
-  const [audioError, setAudioError] = useState<string | null>(null);
-  const [audioProgress, setAudioProgress] = useState<{ loaded: number; total: number }>({ loaded: 0, total: 0 });
-  const [keysoundOnlyMode, setKeysoundOnlyMode] = useState(false); // BGM 렌더링 실패 시 keysound만 사용
-
-  // Fullscreen state
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  // BGM/Fullscreen state는 maxBeat 선언 이후 훅 호출로 처리 (아래 참조)
 
   // BMS Options
   const [showSettings, setShowSettings] = useState(false);
@@ -2458,44 +2453,52 @@ export function NoteChartViewer({
     initialTimingMarkerSettings ?? DEFAULT_TIMING_MARKER_SETTINGS
   );
 
-  // Keysound state
-  const [keysoundLoading, setKeysoundLoading] = useState(false);
-  const [keysoundReady, setKeysoundReady] = useState(false);
-  const [keysoundProgress, setKeysoundProgress] = useState({ loaded: 0, total: 0 });
   const [pipelineLatency, setPipelineLatency] = useState<number | null>(null);
   const [schedulingOverhead, setSchedulingOverhead] = useState<number | null>(null);
   const [keysoundEnabled, setKeysoundEnabled] = useState(showKeysounds);
 
   // Audio settings (defaults, no external preferences store)
-  const audioSettings = { equalizer: undefined as EqualizerSettings | undefined, effector: undefined as EffectorSettings | undefined };
   const [keysoundVolume, setKeysoundVolume] = useState(50); // 0-100 scale
   const [keysoundMuted, setKeysoundMuted] = useState(false);
   const [audioDialogOpen, setAudioDialogOpen] = useState(false);
-  const [localEqualizer, setLocalEqualizer] = useState<EqualizerSettings>(
-    audioSettings.equalizer ?? {
-      enabled: false,
-      preset: 'flat',
-      bands: [
-        { frequency: 31, gain: 0 },
-        { frequency: 63, gain: 0 },
-        { frequency: 125, gain: 0 },
-        { frequency: 250, gain: 0 },
-        { frequency: 500, gain: 0 },
-        { frequency: 1000, gain: 0 },
-        { frequency: 2000, gain: 0 },
-        { frequency: 4000, gain: 0 },
-        { frequency: 8000, gain: 0 },
-        { frequency: 16000, gain: 0 },
-      ],
-    }
-  );
-  const [localEffector, setLocalEffector] = useState<EffectorSettings>(
-    audioSettings.effector ?? {
-      compressor: { enabled: false, threshold: -24, ratio: 4, attack: 0.003, release: 0.25 },
-      reverb: { enabled: false, mix: 0.3, decay: 1.5 },
-      stereo: { enabled: false, width: 1 },
-    }
-  );
+  const [localEqualizer, setLocalEqualizer] = useState<EqualizerSettings>({
+    enabled: false,
+    preset: 'flat',
+    bands: [
+      { frequency: 31, gain: 0 },
+      { frequency: 63, gain: 0 },
+      { frequency: 125, gain: 0 },
+      { frequency: 250, gain: 0 },
+      { frequency: 500, gain: 0 },
+      { frequency: 1000, gain: 0 },
+      { frequency: 2000, gain: 0 },
+      { frequency: 4000, gain: 0 },
+      { frequency: 8000, gain: 0 },
+      { frequency: 16000, gain: 0 },
+    ],
+  });
+  const [localEffector, setLocalEffector] = useState<EffectorSettings>({
+    compressor: { enabled: false, threshold: -24, ratio: 4, attack: 0.003, release: 0.25 },
+    reverb: { enabled: false, mix: 0.3, decay: 1.5 },
+    stereo: { enabled: false, width: 1 },
+  });
+
+  // 키사운드 라이프사이클 — useKeysoundLifecycle 훅으로 위임
+  const {
+    keysoundPlayerRef,
+    keysoundLoading,
+    keysoundReady,
+    keysoundProgress,
+  } = useKeysoundLifecycle({
+    keysounds,
+    keysoundBaseUrl,
+    notes,
+    keysoundVolume,
+    keysoundMuted,
+    playbackSpeed,
+    localEqualizer,
+    localEffector,
+  });
 
   // Keep refs in sync with values for use in animation loop
   useEffect(() => {
@@ -2507,34 +2510,7 @@ export function NoteChartViewer({
   useEffect(() => { keysoundReadyRef.current = keysoundReady; }, [keysoundReady]);
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
 
-  // Fullscreen toggle function
-  const toggleFullscreen = useCallback(async () => {
-    if (!outerContainerRef.current) return;
-
-    try {
-      if (!document.fullscreenElement) {
-        await outerContainerRef.current.requestFullscreen();
-        setIsFullscreen(true);
-      } else {
-        await document.exitFullscreen();
-        setIsFullscreen(false);
-      }
-    } catch (err: unknown) {
-      console.error('Fullscreen error:', err);
-    }
-  }, []);
-
-  // Listen for fullscreen change events (e.g., user presses ESC)
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-    };
-  }, []);
+  // Fullscreen: isFullscreen + toggleFullscreen 은 useFullscreen 훅에서 제공됨 (위에서 선언)
 
   // Cleanup WebGL event listeners on unmount
   useEffect(() => {
@@ -2871,350 +2847,28 @@ export function NoteChartViewer({
   const numColumns = columnsLayout === 'vertical' ? 1 : Math.ceil(totalMeasures / localMeasuresPerColumn);
   const singleColumnHeight = effectiveMeasuresPerColumn * 4 * columnBeatScale;
 
-  // 오디오 (fetch로 먼저 확인 후 로드)
-  useEffect(() => {
-    if (!audioUrl) {
-      console.log('[NoteChartViewer] No audioUrl provided, skipping BGM load');
-      setAudioLoaded(false);
-      setAudioLoading(false);
-      setAudioError(null);
-      return;
-    }
+  // BGM 오디오 — useBgmAudio 훅 (maxBeat 이후에 위치해야 함)
+  const {
+    audioRef,
+    audioLoaded,
+    audioLoading,
+    audioError,
+    audioProgress,
+    keysoundOnlyMode,
+  } = useBgmAudio(audioUrl, maxBeat, () => {
+    // BGM ended: keysound 모드가 아닐 때 재생 종료 처리
+    if (keysoundReadyRef.current) return;
+    setIsPlaying(false);
+    playbackBeatRef.current = maxBeat;
+    setPlaybackBeat(maxBeat);
+  });
 
-    console.log('[NoteChartViewer] Loading BGM audio from:', audioUrl);
-    setAudioLoading(true);
-    setAudioLoaded(false);
-    setAudioError(null);
-    setAudioProgress({ loaded: 0, total: 0 });
-    setKeysoundOnlyMode(false);
-
-    let cancelled = false;
-    let blobUrl: string | null = null;
-    let audio: HTMLAudioElement | null = null;
-
-    const loadAudio = async () => {
-      try {
-        // 먼저 fetch로 응답 확인 (서버 에러 시 적절한 에러 메시지 표시)
-        const response = await fetch(audioUrl, {
-          credentials: 'include',
-        });
-
-        if (cancelled) return;
-
-        if (!response.ok) {
-          // 서버 에러 응답 처리
-          let errorMsg = `Server error: ${response.status}`;
-          try {
-            const errorData = await response.json();
-            if (errorData.message) {
-              errorMsg = errorData.message;
-            }
-          } catch {
-            // JSON 파싱 실패 시 기본 메시지 사용
-          }
-          console.warn(`[NoteChartViewer] BGM fetch failed:`, errorMsg);
-          setAudioLoading(false);
-
-          // "too many notes" 또는 "too many keysounds" 에러는 keysound-only 모드로 전환
-          // 이는 에러가 아니라 복잡한 BMS 파일에 대한 정상적인 동작
-          if (errorMsg.includes('too many notes') || errorMsg.includes('too many keysounds')) {
-            console.log('[NoteChartViewer] Complex BMS detected, using keysound-only mode');
-            setKeysoundOnlyMode(true);
-            setAudioError(null); // 에러가 아닌 정상 동작
-          } else {
-            setAudioError(errorMsg);
-          }
-          return;
-        }
-
-        // Content-Type 확인
-        const contentType = response.headers.get('content-type') || '';
-        if (!contentType.startsWith('audio/')) {
-          console.warn(`[NoteChartViewer] Invalid content type: ${contentType}`);
-          setAudioLoading(false);
-          setAudioError('Invalid audio response from server');
-          return;
-        }
-
-        // Blob으로 변환 후 Audio 생성 (진행률 추적)
-        const contentLength = response.headers.get('content-length');
-        const total = contentLength ? parseInt(contentLength, 10) : 0;
-        let blob: Blob;
-
-        if (total > 0 && response.body) {
-          const reader = response.body.getReader();
-          const chunks: Uint8Array[] = [];
-          let loaded = 0;
-
-          for (;;) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            if (cancelled) { reader.cancel(); return; }
-            chunks.push(value);
-            loaded += value.length;
-            setAudioProgress({ loaded, total });
-          }
-
-          // Note: TS lib types `Uint8Array<ArrayBufferLike>` cannot be directly
-          // assigned to `BlobPart` because `ArrayBufferLike` includes
-          // `SharedArrayBuffer`. fetch reader always yields non-shared buffers,
-          // so a single narrowing cast (instead of the previous `as unknown as`
-          // double-cast) is sufficient and preserves byteOffset/byteLength.
-          blob = new Blob(chunks as BlobPart[], { type: contentType || 'audio/wav' });
-        } else {
-          blob = await response.blob();
-        }
-        if (cancelled) return;
-
-        blobUrl = URL.createObjectURL(blob);
-        audio = new Audio(blobUrl);
-        audioRef.current = audio;
-
-        const handleCanPlay = () => {
-          console.log('[NoteChartViewer] BGM audio loaded successfully');
-          setAudioLoading(false);
-          setAudioLoaded(true);
-          setAudioError(null);
-        };
-
-        const handleError = () => {
-          console.warn('[NoteChartViewer] Audio playback error');
-          setAudioLoading(false);
-          setAudioLoaded(false);
-          setAudioError('Failed to decode audio');
-        };
-
-        const handleEnded = () => {
-          // 키사운드 모드일 때는 BGM 종료가 재생 종료를 의미하지 않음
-          // (Web Audio 타이밍으로 재생이 계속되므로 BGM이 짧아도 차트 끝까지 재생)
-          if (keysoundReadyRef.current) return;
-
-          setIsPlaying(false);
-          playbackBeatRef.current = maxBeat;
-          setPlaybackBeat(maxBeat);
-        };
-
-        audio.addEventListener('canplaythrough', handleCanPlay);
-        audio.addEventListener('error', handleError);
-        audio.addEventListener('ended', handleEnded);
-        audio.load();
-      } catch (error: unknown) {
-        if (cancelled) return;
-        const errorMsg = getErrorMessage(error, 'Network error');
-        console.warn(`[NoteChartViewer] BGM load error:`, errorMsg);
-        setAudioLoading(false);
-        setAudioError(errorMsg);
-      }
-    };
-
-    loadAudio();
-
-    return () => {
-      cancelled = true;
-      if (audio) {
-        audio.pause();
-        audio.src = '';
-      }
-      if (blobUrl) {
-        URL.revokeObjectURL(blobUrl);
-      }
-      audioRef.current = null;
-    };
-  }, [audioUrl, maxBeat]);
-
-  // 키사운드 로드 (keysoundVolume은 별도 effect에서 처리하므로 의존성에서 제외)
-  useEffect(() => {
-    console.log('[NoteChartViewer] Keysound init check:', {
-      hasKeysounds: !!keysounds,
-      keysoundsCount: keysounds ? Object.keys(keysounds).length : 0,
-      keysoundBaseUrl,
-      sampleKeysounds: keysounds ? Object.entries(keysounds).slice(0, 3) : [],
-    });
-
-    if (!keysounds || !keysoundBaseUrl || Object.keys(keysounds).length === 0) {
-      console.log('[NoteChartViewer] Skipping keysound load - missing data:', {
-        hasKeysounds: !!keysounds,
-        hasKeysoundBaseUrl: !!keysoundBaseUrl,
-        keysoundsLength: keysounds ? Object.keys(keysounds).length : 0,
-      });
-      setKeysoundReady(false);
-      return;
-    }
-
-    // 현재 keysounds 객체의 참조를 캡처 (effect 내에서 사용)
-    const currentKeysounds = keysounds;
-    const currentBaseUrl = keysoundBaseUrl;
-    let cancelled = false;
-
-    const initKeysounds = async () => {
-      console.log('[NoteChartViewer] Starting keysound initialization...', {
-        baseUrl: currentBaseUrl,
-        keysoundsCount: Object.keys(currentKeysounds).length,
-      });
-
-      // 이전 플레이어 정리
-      if (keysoundPlayerRef.current) {
-        console.log('[NoteChartViewer] Disposing previous keysound player');
-        keysoundPlayerRef.current.dispose();
-        keysoundPlayerRef.current = null;
-      }
-
-      setKeysoundLoading(true);
-      setKeysoundReady(false);
-      setKeysoundProgress({ loaded: 0, total: Object.keys(currentKeysounds).length });
-
-      try {
-        const player = new KeysoundPlayer({
-          baseUrl: currentBaseUrl,
-          keysounds: currentKeysounds,
-          volume: 0.8, // 기본값 사용, 로드 후 별도 effect에서 실제 볼륨 설정
-          onProgress: (loaded, total) => {
-            if (!cancelled) {
-              setKeysoundProgress({ loaded, total });
-            }
-          },
-          onReady: () => {
-            console.log('[NoteChartViewer] KeysoundPlayer onReady callback fired!');
-            if (!cancelled) {
-              setKeysoundReady(true);
-              setKeysoundLoading(false);
-            }
-          },
-          onError: (error) => {
-            console.warn('[NoteChartViewer] Keysound load error:', error);
-          },
-        });
-
-        // NOTE: Do NOT set keysoundPlayerRef.current until AFTER async init/load
-        // to prevent race conditions when cleanup runs mid-initialization
-        console.log('[NoteChartViewer] KeysoundPlayer created, calling init()...');
-        await player.init();
-
-        // Check if cancelled after init (cleanup may have run during await)
-        if (cancelled) {
-          console.log('[NoteChartViewer] Cancelled after init, disposing player');
-          player.dispose();
-          return;
-        }
-
-        console.log('[NoteChartViewer] KeysoundPlayer init done, calling load()...');
-        await player.load();
-
-        // Check if cancelled after load
-        if (cancelled) {
-          console.log('[NoteChartViewer] Cancelled after load, disposing player');
-          player.dispose();
-          return;
-        }
-
-        console.log('[NoteChartViewer] KeysoundPlayer load done, isReady:', player.isReady);
-
-        // 진단 정보 출력: 노트에서 참조된 키사운드 vs 로드된 키사운드 비교
-        const referencedKeysoundIds = notes
-          .filter(note => note.keysound)
-          .map(note => note.keysound as string);
-        player.logDiagnostics(referencedKeysoundIds);
-
-        // Only NOW set the ref, after all async operations complete successfully
-        keysoundPlayerRef.current = player;
-
-        // 로드 완료 후 실제 볼륨 및 오디오 설정 적용
-        const effectiveVolume = keysoundMuted ? 0 : keysoundVolume / 100;
-        player.setVolume(effectiveVolume);
-        console.log('[NoteChartViewer] Volume set to', effectiveVolume);
-
-        // 이퀄라이저 초기 설정 적용
-        player.setEqualizerEnabled(localEqualizer.enabled);
-        if (localEqualizer.enabled && localEqualizer.preset !== 'custom') {
-          player.setEqualizerPreset(localEqualizer.preset);
-        }
-
-        // 이펙터 초기 설정 적용
-        player.setCompressorEnabled(localEffector.compressor.enabled);
-        player.setReverbEnabled(localEffector.reverb.enabled);
-        player.setStereoEnabled(localEffector.stereo.enabled);
-      } catch (error: unknown) {
-        console.error('[NoteChartViewer] Failed to initialize keysound player:', error);
-        if (!cancelled) {
-          setKeysoundLoading(false);
-          setKeysoundReady(false);
-        }
-      }
-    };
-
-    initKeysounds();
-
-    return () => {
-      cancelled = true;
-      if (keysoundPlayerRef.current) {
-        keysoundPlayerRef.current.dispose();
-        keysoundPlayerRef.current = null;
-      }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keysounds, keysoundBaseUrl]);
-
-  // 키사운드 볼륨 업데이트 (0-100 -> 0-1 변환, mute 반영)
-  useEffect(() => {
-    if (keysoundPlayerRef.current) {
-      const effectiveVolume = keysoundMuted ? 0 : keysoundVolume / 100;
-      keysoundPlayerRef.current.setVolume(effectiveVolume);
-    }
-  }, [keysoundVolume, keysoundMuted]);
-
-  // 이퀄라이저 설정 적용
-  useEffect(() => {
-    if (keysoundPlayerRef.current) {
-      keysoundPlayerRef.current.setEqualizerEnabled(localEqualizer.enabled);
-      if (localEqualizer.enabled) {
-        // 프리셋이 custom이 아니면 프리셋 적용
-        if (localEqualizer.preset !== 'custom') {
-          keysoundPlayerRef.current.setEqualizerPreset(localEqualizer.preset);
-        } else {
-          // custom인 경우 개별 밴드 값 적용
-          localEqualizer.bands.forEach((band, index) => {
-            keysoundPlayerRef.current?.setEqualizerBand(index, band.gain);
-          });
-        }
-      }
-    }
-  }, [localEqualizer]);
-
-  // 이펙터 설정 적용
-  useEffect(() => {
-    if (keysoundPlayerRef.current) {
-      // Compressor
-      keysoundPlayerRef.current.setCompressorEnabled(localEffector.compressor.enabled);
-      if (localEffector.compressor.enabled) {
-        keysoundPlayerRef.current.setCompressorSettings({
-          threshold: localEffector.compressor.threshold,
-          ratio: localEffector.compressor.ratio,
-          attack: localEffector.compressor.attack,
-          release: localEffector.compressor.release,
-        });
-      }
-
-      // Reverb
-      keysoundPlayerRef.current.setReverbEnabled(localEffector.reverb.enabled);
-      if (localEffector.reverb.enabled) {
-        keysoundPlayerRef.current.setReverbMix(localEffector.reverb.mix);
-        keysoundPlayerRef.current.setReverbDecay(localEffector.reverb.decay);
-      }
-
-      // Stereo
-      keysoundPlayerRef.current.setStereoEnabled(localEffector.stereo.enabled);
-      if (localEffector.stereo.enabled) {
-        keysoundPlayerRef.current.setStereoWidth(localEffector.stereo.width);
-      }
-    }
-  }, [localEffector]);
-
-  // 키사운드 재생 속도 업데이트
-  useEffect(() => {
-    if (keysoundPlayerRef.current) {
-      keysoundPlayerRef.current.setPlaybackRate(playbackSpeed);
-    }
-  }, [playbackSpeed]);
+  // Fullscreen — useFullscreen 훅
+  const { isFullscreen, toggleFullscreen: _toggleFullscreen } = useFullscreen();
+  const toggleFullscreen = useCallback(
+    () => _toggleFullscreen(outerContainerRef as React.RefObject<HTMLElement>),
+    [_toggleFullscreen],
+  );
 
   // 재생 시작/종료 시 상태 동기화
   const wasPlayingRef = useRef(false);
