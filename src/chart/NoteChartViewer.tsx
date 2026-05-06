@@ -26,6 +26,8 @@ import { generateLaneConfig, getLaneBackground, type LaneConfig } from './laneCo
 import { useBgmAudio } from './viewer/hooks/useBgmAudio';
 import { useKeysoundLifecycle } from './viewer/hooks/useKeysoundLifecycle';
 import { useFullscreen } from './viewer/hooks/useFullscreen';
+import { useViewerScroll } from './viewer/hooks/useViewerScroll';
+import { useViewerKeyboard } from './viewer/hooks/useViewerKeyboard';
 
 /** Equalizer band setting */
 interface EqualizerBand {
@@ -2407,21 +2409,25 @@ export function NoteChartViewer({
   const timingRef = useRef(timing);
 
   const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode);
-  const [scrollBeat, setScrollBeat] = useState(initialScrollBeat ?? 0);
-
-  // 외부에서 scrollToBeat가 변경되면 해당 위치로 이동
-  useEffect(() => {
-    if (scrollToBeat !== undefined && scrollToBeat >= 0) {
-      setScrollBeat(scrollToBeat);
-    }
-  }, [scrollToBeat]);
-  const [zoomLevel, setZoomLevel] = useState(1);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStartY, setDragStartY] = useState(0);
-  const [dragStartBeat, setDragStartBeat] = useState(0);
-  const [velocity, setVelocity] = useState(0);
-  const [lastY, setLastY] = useState(0);
-  const momentumRef = useRef<number | null>(null);
+  // 스크롤/드래그/줌/모멘텀/터치/휠 — useViewerScroll 훅으로 위임
+  // maxBeat/effectiveBeatScale/scrollSpeed 는 아래에서 useMemo로 계산되지만,
+  // 훅 내부 ref 패턴 덕분에 초기 렌더 이후 자동 sync됨 (초기값은 임시값)
+  const {
+    scrollBeat,
+    setScrollBeat,
+    zoomLevel,
+    setZoomLevel,
+    isDragging,
+    handleMouseDown,
+    handleMouseMove,
+    handleMouseUp,
+    scrollConfigRef,
+  } = useViewerScroll({
+    containerRef,
+    viewMode,
+    initialScrollBeat,
+    scrollToBeat,
+  });
 
   const [isPlaying, setIsPlaying] = useState(false);
   const isPlayingRef = useRef(false);
@@ -2758,6 +2764,9 @@ export function NoteChartViewer({
     [chartWidthOverride, baseChartWidth, widthScale]
   );
   const effectiveBeatScale = useMemo(() => beatScale * zoomLevel * hiSpeed, [beatScale, zoomLevel, hiSpeed]);
+
+  // Sync scrollConfigRef so useViewerScroll native handlers always see fresh values
+  scrollConfigRef.current = { maxBeat, effectiveBeatScale, scrollSpeed };
 
   // Sync refs after variables are declared (for use in animation loop)
   useEffect(() => {
@@ -3135,172 +3144,25 @@ export function NoteChartViewer({
     }
   }, [viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 모멘텀
-  const applyMomentum = useCallback(() => {
-    if (Math.abs(velocity) < 0.01) { setVelocity(0); return; }
-    setScrollBeat(prev => Math.max(0, Math.min(maxBeat, prev + velocity)));
-    setVelocity(prev => prev * 0.92);
-    momentumRef.current = requestAnimationFrame(applyMomentum);
-  }, [velocity, maxBeat]);
+  // 스크롤/모멘텀/터치/휠/키보드 핸들러는 useViewerScroll + useViewerKeyboard 훅에서 제공됨.
+  // scrollConfigRef 는 위 2768번 라인에서 매 렌더마다 maxBeat/effectiveBeatScale/scrollSpeed 로 갱신됨.
 
-  useEffect(() => {
-    if (!isDragging && Math.abs(velocity) > 0.01) {
-      momentumRef.current = requestAnimationFrame(applyMomentum);
-    }
-    return () => { if (momentumRef.current) cancelAnimationFrame(momentumRef.current); };
-  }, [isDragging, velocity, applyMomentum]);
-
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (viewMode !== 'scroll') return;
-    if (momentumRef.current) { cancelAnimationFrame(momentumRef.current); setVelocity(0); }
-    setIsDragging(true);
-    setDragStartY(e.clientY);
-    setDragStartBeat(scrollBeat);
-    setLastY(e.clientY);
-  }, [viewMode, scrollBeat]);
-
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!isDragging || viewMode !== 'scroll') return;
-    const deltaY = dragStartY - e.clientY;
-    // scrollSpeed 적용: 높을수록 더 빠르게 스크롤
-    const scrollSensitivity = effectiveBeatScale / scrollSpeed;
-    setScrollBeat(Math.max(0, Math.min(maxBeat, dragStartBeat + deltaY / scrollSensitivity)));
-    setVelocity((lastY - e.clientY) / scrollSensitivity);
-    setLastY(e.clientY);
-  }, [isDragging, dragStartY, dragStartBeat, viewMode, effectiveBeatScale, maxBeat, lastY, scrollSpeed]);
-
-  const handleMouseUp = useCallback(() => setIsDragging(false), []);
-
-  // Native event handlers for passive: false support
-  const handleNativeTouchStart = useCallback((e: TouchEvent) => {
-    if (viewMode !== 'scroll') return;
-    if (momentumRef.current) { cancelAnimationFrame(momentumRef.current); setVelocity(0); }
-    const touch = e.touches[0];
-    setIsDragging(true);
-    setDragStartY(touch.clientY);
-    setDragStartBeat(scrollBeat);
-    setLastY(touch.clientY);
-  }, [viewMode, scrollBeat]);
-
-  const handleNativeTouchMove = useCallback((e: TouchEvent) => {
-    if (!isDragging || viewMode !== 'scroll') return;
-    e.preventDefault();
-    const touch = e.touches[0];
-    const deltaY = dragStartY - touch.clientY;
-    // scrollSpeed 적용: 높을수록 더 빠르게 스크롤
-    const scrollSensitivity = effectiveBeatScale / scrollSpeed;
-    setScrollBeat(Math.max(0, Math.min(maxBeat, dragStartBeat + deltaY / scrollSensitivity)));
-    setVelocity((lastY - touch.clientY) / scrollSensitivity * 1.5);
-    setLastY(touch.clientY);
-  }, [isDragging, dragStartY, dragStartBeat, viewMode, effectiveBeatScale, maxBeat, lastY, scrollSpeed]);
-
-  const handleNativeTouchEnd = useCallback(() => setIsDragging(false), []);
-
-  const handleNativeWheel = useCallback((e: WheelEvent) => {
-    // Ctrl+wheel: zoom (prevent default to avoid browser zoom)
-    if (e.ctrlKey) {
-      e.preventDefault();
-      // Smooth zoom with smaller increments
-      const zoomFactor = e.deltaY > 0 ? 0.95 : 1.05;
-      setZoomLevel(prev => Math.max(0.25, Math.min(4, prev * zoomFactor)));
-      return;
-    }
-    // Only handle scroll in scroll mode
-    if (viewMode !== 'scroll') return;
-    // Prevent default only for vertical scroll to allow horizontal scroll and other interactions
-    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-      e.preventDefault();
-    }
-    if (momentumRef.current) { cancelAnimationFrame(momentumRef.current); setVelocity(0); }
-    // scrollSpeed 적용: 높을수록 더 빠르게 스크롤
-    const scrollSensitivity = effectiveBeatScale / scrollSpeed;
-    setScrollBeat(prev => Math.max(0, Math.min(maxBeat, prev + e.deltaY / scrollSensitivity)));
-  }, [viewMode, effectiveBeatScale, maxBeat, scrollSpeed]);
-
-  // Register touch/wheel events with passive: false
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    container.addEventListener('touchstart', handleNativeTouchStart, { passive: true });
-    container.addEventListener('touchmove', handleNativeTouchMove, { passive: false });
-    container.addEventListener('touchend', handleNativeTouchEnd, { passive: true });
-    container.addEventListener('touchcancel', handleNativeTouchEnd, { passive: true });
-    container.addEventListener('wheel', handleNativeWheel, { passive: false });
-
-    return () => {
-      container.removeEventListener('touchstart', handleNativeTouchStart);
-      container.removeEventListener('touchmove', handleNativeTouchMove);
-      container.removeEventListener('touchend', handleNativeTouchEnd);
-      container.removeEventListener('touchcancel', handleNativeTouchEnd);
-      container.removeEventListener('wheel', handleNativeWheel);
-    };
-  }, [handleNativeTouchStart, handleNativeTouchMove, handleNativeTouchEnd, handleNativeWheel]);
-
-  // Keyboard shortcuts (only when component is focused)
+  // 키보드 단축키 — useViewerKeyboard 훅으로 위임
   const [isFocused, setIsFocused] = useState(false);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't handle if not focused on the chart viewer or if focused on input elements
-      if (!isFocused) return;
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-
-      switch (e.code) {
-        case 'Space':
-          e.preventDefault();
-          if (viewMode === 'playback') togglePlayback();
-          break;
-        case 'ArrowUp':
-        case 'ArrowRight':
-          e.preventDefault();
-          if (viewMode === 'scroll' || (viewMode === 'playback' && !isPlaying)) {
-            const currentBeat = viewMode === 'scroll' ? scrollBeat : playbackBeat;
-            const newBeat = Math.min(maxBeat, currentBeat + 4);
-            playbackBeatRef.current = newBeat;
-            setPlaybackBeat(newBeat);
-            setScrollBeat(newBeat);
-          }
-          break;
-        case 'ArrowDown':
-        case 'ArrowLeft':
-          e.preventDefault();
-          if (viewMode === 'scroll' || (viewMode === 'playback' && !isPlaying)) {
-            const currentBeat = viewMode === 'scroll' ? scrollBeat : playbackBeat;
-            const newBeat = Math.max(0, currentBeat - 4);
-            playbackBeatRef.current = newBeat;
-            setPlaybackBeat(newBeat);
-            setScrollBeat(newBeat);
-          }
-          break;
-        case 'Home':
-          e.preventDefault();
-          setScrollBeat(0);
-          playbackBeatRef.current = 0;
-          setPlaybackBeat(0);
-          break;
-        case 'End':
-          e.preventDefault();
-          setScrollBeat(maxBeat);
-          playbackBeatRef.current = maxBeat;
-          setPlaybackBeat(maxBeat);
-          break;
-        case 'Equal':
-        case 'NumpadAdd':
-          e.preventDefault();
-          setZoomLevel(prev => Math.min(4, prev * 1.25));
-          break;
-        case 'Minus':
-        case 'NumpadSubtract':
-          e.preventDefault();
-          setZoomLevel(prev => Math.max(0.25, prev * 0.8));
-          break;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [viewMode, maxBeat, isPlaying, togglePlayback, playbackBeat, scrollBeat, isFocused]);
+  useViewerKeyboard({
+    isFocused,
+    viewMode,
+    maxBeat,
+    isPlaying,
+    scrollBeat,
+    playbackBeat,
+    playbackBeatRef,
+    setScrollBeat,
+    setPlaybackBeat,
+    setZoomLevel,
+    togglePlayback,
+  });
 
   // Seek handler for progress bar
   const handleSeek = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
