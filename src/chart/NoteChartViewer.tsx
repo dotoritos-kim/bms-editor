@@ -31,6 +31,7 @@ import { useViewerAudioSettings } from './viewer/hooks/useViewerAudioSettings';
 import { useViewerPlayback } from './viewer/hooks/useViewerPlayback';
 // EqualizerBand/EqualizerSettings/EffectorSettings 는 useKeysoundLifecycle 에서 export 됨
 import type { EqualizerBand, EqualizerSettings, EffectorSettings } from './viewer/hooks/useKeysoundLifecycle';
+import { useKeysoundTrigger } from './viewer/hooks/useKeysoundTrigger';
 // ── Renderer sub-modules (Stage E extraction) ─────────────────────────────────
 import {
   NOTE_HEIGHT,
@@ -447,9 +448,7 @@ export function NoteChartViewer({
   const webglCleanupRef = useRef<(() => void) | null>(null); // Cleanup function for WebGL event listeners
   const [webglContextLost, setWebglContextLost] = useState(false);
 
-  // Hit effects state (notes that have just been hit/played)
-  const hitNotesRef = useRef<Map<string, HitEffect>>(new Map());
-  const [hitNotesVersion, setHitNotesVersion] = useState(0);
+  // Hit effects + keysound trigger → useKeysoundTrigger (Stage F)
   const lanesRef = useRef<LaneConfig[]>([]);
   const laneMapRef = useRef<Map<string, LaneConfig>>(new Map()); // Cached for animation loop
   const beatScaleRef = useRef(beatScale);
@@ -605,156 +604,26 @@ export function NoteChartViewer({
     }
   }, [setupWebglEventListeners]);
 
-  /**
-   * Seek 시 활성 키음을 계산하고 offset과 함께 재생
-   * 시작점이 seekBeat 이전이지만, 키음 길이가 seekBeat까지 이어지는 노트들을 재생
-   *
-   * 성능 최적화:
-   * - 최대 lookbackTime(초) 이전 노트만 검색 (대부분의 키음은 30초 미만)
-   * - duration 캐시 사용으로 반복 조회 방지
-   */
-  const playActiveKeysoundsAtBeat = useCallback((seekBeat: number, calculateTimeAtBeatFn: (beat: number) => number) => {
-    if (!keysoundEnabledRef.current || !keysoundReadyRef.current || !keysoundPlayerRef.current) return;
-
-    const player = keysoundPlayerRef.current;
-    const seekTime = calculateTimeAtBeatFn(seekBeat);
-    const keysoundsToPlay: Array<{ id: string; offset: number }> = [];
-
-    // 성능 최적화: 최대 30초 이전의 노트만 검색 (대부분의 키음은 30초 미만)
-    const maxLookbackTime = 30; // seconds
-    const minTime = Math.max(0, seekTime - maxLookbackTime);
-
-    // 키음 duration 캐시 (같은 키음이 여러 번 나올 수 있으므로)
-    const durationCache = new Map<string, number>();
-
-    // 노트를 순회하며 현재 위치에서 아직 재생중인 키음 찾기
-    for (const note of notesRef.current) {
-      if (!note.keysound) continue;
-
-      const noteTime = calculateTimeAtBeatFn(note.beat);
-
-      // 성능 최적화: seekTime 이후의 노트는 스킵
-      if (noteTime > seekTime) continue;
-
-      // 성능 최적화: 너무 오래전 노트는 스킵
-      if (noteTime < minTime) continue;
-
-      // 키음 duration 조회 (캐시 사용)
-      let duration = durationCache.get(note.keysound);
-      if (duration === undefined) {
-        duration = player.getKeysoundDuration(note.keysound);
-        durationCache.set(note.keysound, duration);
-      }
-      if (duration <= 0) continue; // 버퍼가 없거나 duration을 알 수 없음
-
-      // 현재 시간이 노트 시작 + duration 내에 있으면 아직 재생중
-      if (seekTime < noteTime + duration) {
-        const offset = seekTime - noteTime;
-        keysoundsToPlay.push({ id: note.keysound, offset });
-
-        // 이 노트는 이미 재생됨으로 표시 (중복 재생 방지)
-        const noteKey = `${note.beat}-${note.keysound}`;
-        playedNotesRef.current.add(noteKey);
-      }
-    }
-
-    // 활성 키음들을 offset과 함께 재생
-    if (keysoundsToPlay.length > 0) {
-      player.playMultipleWithOffset(keysoundsToPlay);
-    }
-  }, []);
-
-  /**
-   * 이진 검색: 주어진 beat보다 큰 첫 번째 노트의 인덱스 반환
-   * 성능 최적화: O(n) -> O(log n)
-   */
-  const findFirstNoteIndexAfterBeat = useCallback((sortedNotes: BMSNote[], beat: number): number => {
-    let left = 0;
-    let right = sortedNotes.length;
-    while (left < right) {
-      const mid = (left + right) >>> 1;
-      if (sortedNotes[mid].beat <= beat) {
-        left = mid + 1;
-      } else {
-        right = mid;
-      }
-    }
-    return left;
-  }, []);
-
-  // Keysound trigger function (uses refs to avoid stale closures in animation loop)
-  // 성능 최적화: 정렬된 배열과 이진 검색 사용 O(log n + k) where k = notes in range
-  const triggerKeysoundsInRange = useCallback((fromBeat: number, toBeat: number) => {
-    if (!keysoundEnabledRef.current || !keysoundReadyRef.current || !keysoundPlayerRef.current) return;
-    if (toBeat <= fromBeat) return;
-
-    const currentLanes = lanesRef.current;
-    const currentBeatScale = beatScaleRef.current;
-    const totalWidth = currentLanes.reduce((sum, l) => sum + l.width, 0);
-    const offsetX = -totalWidth / 2;
-    const laneMap = laneMapRef.current; // Use cached Map (avoid creating new Map every frame)
-    const now = performance.now();
-
-    const notesToPlay: string[] = [];
-    let hasNewHits = false;
-
-    // 성능 최적화: 이진 검색으로 시작 인덱스 찾기
-    const sortedNotes = sortedNotesRef.current;
-    const startIndex = findFirstNoteIndexAfterBeat(sortedNotes, fromBeat);
-
-    // 범위 내 노트만 순회 (fromBeat < beat <= toBeat)
-    for (let i = startIndex; i < sortedNotes.length; i++) {
-      const note = sortedNotes[i];
-
-      // toBeat를 넘어가면 종료
-      if (note.beat > toBeat) break;
-
-      const noteKey = `${note.beat}-${note.keysound}`;
-      if (playedNotesRef.current.has(noteKey)) continue;
-
-      if (note.keysound) {
-        notesToPlay.push(note.keysound);
-        playedNotesRef.current.add(noteKey);
-
-        // Add hit effect for visual feedback
-        if (note.column) {
-          const lane = laneMap.get(note.column);
-          if (lane) {
-            const x = offsetX + lane.x + NOTE_PADDING + (lane.width - NOTE_PADDING * 2) / 2;
-            // 스크롤 기믹 적용
-            const currentPositioning = positioningRef.current;
-            const y = currentPositioning
-              ? currentPositioning.position(note.beat) * currentBeatScale + NOTE_HEIGHT / 2
-              : note.beat * currentBeatScale + NOTE_HEIGHT / 2;
-            const hitKey = `${note.beat}-${note.column}-${note.keysound}`;
-            hitNotesRef.current.set(hitKey, { x, y, width: lane.width, color: lane.color, time: now });
-            hasNewHits = true;
-          }
-        }
-      }
-    }
-
-    if (notesToPlay.length > 0) {
-      keysoundPlayerRef.current.playMultiple(notesToPlay);
-    }
-
-    // Trigger re-render for hit effects (no flushSync - let React batch naturally)
-    // 성능 최적화: flushSync 제거로 메인 스레드 블로킹 방지
-    if (hasNewHits) {
-      setHitNotesVersion(v => v + 1);
-    }
-
-    // Clean up old hit effects (throttled - only every 10 frames)
-    // 성능 최적화: 매 프레임 대신 주기적으로 정리
-    const CLEANUP_THRESHOLD = 500;
-    if (hitNotesRef.current.size > 0 && Math.random() < 0.1) {
-      hitNotesRef.current.forEach((effect, key) => {
-        if (now - effect.time > CLEANUP_THRESHOLD) {
-          hitNotesRef.current.delete(key);
-        }
-      });
-    }
-  }, [findFirstNoteIndexAfterBeat]);
+  // ── useKeysoundTrigger (Stage F) ──────────────────────────────────────────
+  // Owns hitNotesRef, hitNotesVersion, playedNotesRef, and the two trigger fns.
+  // playedNotesRef is forwarded into useViewerPlayback so seek/reset works.
+  const {
+    hitNotesRef,
+    hitNotesVersion,
+    playedNotesRef,
+    playActiveKeysoundsAtBeat,
+    triggerKeysoundsInRange,
+  } = useKeysoundTrigger({
+    notesRef,
+    sortedNotesRef,
+    keysoundEnabledRef,
+    keysoundReadyRef,
+    keysoundPlayerRef,
+    lanesRef,
+    laneMapRef,
+    beatScaleRef,
+    positioningRef,
+  });
 
   const baseLanes = useMemo(() => generateLaneConfig(keyMode, 1), [keyMode]);
   const unscaledLanes = useMemo(() => applyLaneOption(baseLanes, laneOption, randomSeed), [baseLanes, laneOption, randomSeed]);
@@ -886,13 +755,13 @@ export function NoteChartViewer({
 
   // 재생 엔진 — useViewerPlayback 훅으로 위임
   // (애니메이션 루프, togglePlayback, calculateTimeAtBeat, 재생 상태/refs 포함)
+  // playedNotesRef는 useKeysoundTrigger가 소유 → 주입
   const {
     isPlaying, setIsPlaying,
     playbackBeat, setPlaybackBeat,
     animationRef,
     playbackBeatRef,
     lastPlayedBeatRef,
-    playedNotesRef,
     togglePlayback,
     calculateTimeAtBeat,
   } = useViewerPlayback({
@@ -913,6 +782,7 @@ export function NoteChartViewer({
     setSchedulingOverhead,
     triggerKeysoundsInRange,
     playActiveKeysoundsAtBeat,
+    playedNotesRef,
   });
 
   // BGM ended 핸들러를 useViewerPlayback 이후에 ref 에 주입
