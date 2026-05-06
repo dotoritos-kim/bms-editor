@@ -221,6 +221,48 @@ export const defaultMessages = {
     delete: 'Delete',
     selectAll: 'Select All',
   },
+  viewer: {
+    numberInput: {
+      manualEntryTitle: 'Manual entry ({{min}} ~ {{max}})',
+    },
+    timeline: {
+      clickToSeek: 'Click to seek to this position',
+    },
+    timing: {
+      bpmColor: 'BPM color',
+      stopColor: 'STOP color',
+      scrollColor: 'SCROLL color',
+      opacity: 'Opacity: {{percent}}%',
+      resetToDefault: 'Reset to default',
+    },
+    aspect: {
+      lockTooltip: 'Lock aspect ratio',
+      unlockTooltip: 'Unlock aspect ratio',
+    },
+    playback: {
+      playingNormal: 'Playing ({{speed}}x)',
+      playingBgm: 'Playing (BGM, {{speed}}x)',
+      playingKeysound: 'Playing (Keysound, {{speed}}x)',
+      playingBpm: 'Playing (BPM, {{speed}}x)',
+      idleHint: 'Space to play • Click to seek',
+      scrollHint: 'Drag/scroll to navigate • Ctrl+wheel to zoom • Arrow keys to move',
+      fullscreenHint: ' • ESC to exit fullscreen',
+      verticalView: 'Vertical view • {{measures}} measures • Vertical scroll',
+      columnView: 'Column view • {{measures}} measures ({{columns}} columns, {{measuresPerColumn}} m/col) • Horizontal scroll',
+      latencyTooltip: 'Pipeline: baseLatency+outputLatency (AudioContext→speakers)\nScheduling: playAudioSync average (last 100 calls)',
+    },
+  },
+  keysoundPlayer: {
+    contextSuspended: 'AudioContext suspended — keysounds may not play. Use Resume on user interaction.',
+    fileLoadFailed: 'Failed to load keysound file: {{file}}',
+    decodeFailed: 'Failed to decode audio data: {{error}}',
+    missingKey: 'Missing keysound key: {{key}}',
+  },
+  bmsChart: {
+    fetchFailed: 'Failed to fetch BMS file from {{url}}: {{status}}',
+    parseFailed: 'Failed to parse BMS chart: {{error}}',
+    keyModeFailed: 'Failed to detect key mode',
+  },
 } as const;
 
 export type BmsEditorMessages = typeof defaultMessages;

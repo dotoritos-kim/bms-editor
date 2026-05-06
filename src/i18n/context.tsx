@@ -35,7 +35,7 @@ export function I18nProvider({ value, children }: I18nProviderProps) {
  */
 export function fallbackTranslate(
   key: BmsEditorI18nKey,
-  _params?: Record<string, string | number>,
+  params?: Record<string, string | number>,
 ): string {
   const parts = key.split('.');
   let cursor: unknown = defaultMessages;
@@ -46,7 +46,15 @@ export function fallbackTranslate(
       return key; // missing — surface the raw key as a last-resort signal
     }
   }
-  return typeof cursor === 'string' ? cursor : key;
+  if (typeof cursor !== 'string') return key;
+  // Lightweight `{{name}}` interpolation. Keep on par with i18next so call
+  // sites stay identical when a real provider is mounted.
+  if (params) {
+    return cursor.replace(/\{\{(\w+)\}\}/g, (m, name: string) =>
+      Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : m,
+    );
+  }
+  return cursor;
 }
 
 const fallbackProvider: I18nProviderValue = {
