@@ -295,8 +295,10 @@ export const HeaderEditorPanel = React.memo(function HeaderEditorPanel({
   }, [chart.headers]);
 
   const getHeaderValue = useCallback((key: string): string => {
-    const h = chart.headers as unknown as Record<string, string | number | undefined>;
-    const v = h[key];
+    // BMSHeaderData has named fields only; narrowing via keyof allows safe access
+    // without an unsafe double-cast.
+    type ScalarHeaderKey = keyof { [K in keyof BMSHeaderData as BMSHeaderData[K] extends string | number | undefined ? K : never]: BMSHeaderData[K] };
+    const v = (chart.headers as Pick<BMSHeaderData, ScalarHeaderKey>)[key as ScalarHeaderKey];
     return v === undefined || v === null ? '' : String(v);
   }, [chart.headers]);
 
