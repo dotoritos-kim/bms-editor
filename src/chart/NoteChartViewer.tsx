@@ -30,6 +30,7 @@ import { useViewerScroll } from './viewer/hooks/useViewerScroll';
 import { useViewerKeyboard } from './viewer/hooks/useViewerKeyboard';
 import { useViewerSettings } from './viewer/hooks/useViewerSettings';
 import { useViewerAudioSettings } from './viewer/hooks/useViewerAudioSettings';
+import { useViewerPlayback } from './viewer/hooks/useViewerPlayback';
 // EqualizerBand/EqualizerSettings/EffectorSettings 는 useKeysoundLifecycle 에서 export 됨
 import type { EqualizerBand, EqualizerSettings, EffectorSettings } from './viewer/hooks/useKeysoundLifecycle';
 
@@ -2370,10 +2371,7 @@ export function NoteChartViewer({
   const containerRef = useRef<HTMLDivElement>(null);
   const outerContainerRef = useRef<HTMLDivElement>(null);
   // audioRef, keysoundPlayerRef는 훅(useBgmAudio / useKeysoundLifecycle)에서 반환됨
-  const animationRef = useRef<number | null>(null);
-  const lastTimeRef = useRef<number>(0);
-  const lastPlayedBeatRef = useRef<number>(-1);
-  const playedNotesRef = useRef<Set<string>>(new Set());
+  // animationRef, playbackBeatRef, lastPlayedBeatRef, playedNotesRef는 useViewerPlayback에서 반환됨
   const notesRef = useRef(notes);
   // 성능 최적화: 비트 순으로 정렬된 노트 배열 (이진 검색용)
   const sortedNotesRef = useRef<BMSNote[]>([]);
@@ -2413,13 +2411,8 @@ export function NoteChartViewer({
     scrollToBeat,
   });
 
-  const [isPlaying, setIsPlaying] = useState(false);
-  const isPlayingRef = useRef(false);
-  const [playbackBeat, setPlaybackBeat] = useState(0);
-  const playbackBeatRef = useRef(0); // Ref for camera animation (decoupled from React state)
-  // Web Audio 기반 정밀 동기화를 위한 refs
-  const contextStartTimeRef = useRef(0); // 재생 시작 시점의 AudioContext.currentTime
-  const startBeatRef = useRef(0); // 재생 시작 시점의 비트
+  // isPlaying/playbackBeat/animationRef/playbackBeatRef/lastPlayedBeatRef/playedNotesRef
+  // 는 useViewerPlayback 훅에서 반환됨 (아래 keysound 이후에 호출됨)
   // BGM/Fullscreen state는 maxBeat 선언 이후 훅 호출로 처리 (아래 참조)
 
   // BMS 표시 설정 — useViewerSettings 훅으로 위임
@@ -2484,7 +2477,7 @@ export function NoteChartViewer({
   }, [notes]);
   useEffect(() => { keysoundEnabledRef.current = keysoundEnabled; }, [keysoundEnabled]);
   useEffect(() => { keysoundReadyRef.current = keysoundReady; }, [keysoundReady]);
-  useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
+  // isPlayingRef は useViewerPlayback 훅 내부에서 관리됨 — 여기서는 불필요
 
   // Fullscreen: isFullscreen + toggleFullscreen 은 useFullscreen 훅에서 제공됨 (위에서 선언)
 
@@ -2513,9 +2506,8 @@ export function NoteChartViewer({
       e.preventDefault();
       console.warn('[NoteChartViewer] WebGL context lost');
       setWebglContextLost(true);
-      if (isPlayingRef.current) {
-        setIsPlaying(false);
-      }
+      // setIsPlaying(false) 은 no-op when already false, so safe to call unconditionally
+      setIsPlaying(false);
     };
 
     const handleContextRestored = () => {
@@ -2748,7 +2740,7 @@ export function NoteChartViewer({
   useEffect(() => { timingRef.current = timing; }, [timing]);
 
   const totalHeight = useMemo(() => maxBeat * effectiveBeatScale, [maxBeat, effectiveBeatScale]);
-  const progressPercent = viewMode === 'playback' ? (playbackBeat / maxBeat) * 100 : (scrollBeat / maxBeat) * 100;
+  // progressPercent는 playbackBeat (useViewerPlayback) 이후로 이동됨
   // effectiveHeight: chartHeightOverride가 설정되면 사용, 아니면 props height
   const effectiveHeight = useMemo(() => chartHeightOverride ?? height, [chartHeightOverride, height]);
 
@@ -2783,39 +2775,8 @@ export function NoteChartViewer({
   // For judgment line at judgmentLinePosition: cameraOffset = (0.5 - judgmentLinePosition) * viewportHeight
   const cameraOffset = (0.5 - judgmentLinePosition) * viewportHeight;
 
-  // 시간 계산 (BPM 변화 고려)
-  const calculateTimeAtBeat = useCallback((targetBeat: number): number => {
-    if (!bpmChanges || bpmChanges.length === 0) {
-      return (targetBeat / bpm) * 60;
-    }
-    const sortedChanges = [...bpmChanges].sort((a, b) => a.beat - b.beat);
-    let totalSeconds = 0;
-    let currentBeat = 0;
-    let currentBpm = bpm;
-    for (const change of sortedChanges) {
-      if (change.beat > currentBeat && change.beat <= targetBeat) {
-        const beats = change.beat - currentBeat;
-        totalSeconds += (beats / currentBpm) * 60;
-        currentBeat = change.beat;
-      }
-      if (change.beat <= targetBeat) {
-        currentBpm = change.bpm;
-      }
-    }
-    if (currentBeat < targetBeat) {
-      totalSeconds += ((targetBeat - currentBeat) / currentBpm) * 60;
-    }
-    return totalSeconds;
-  }, [bpm, bpmChanges]);
-
-  const totalDuration = useMemo(() => calculateTimeAtBeat(maxBeat), [calculateTimeAtBeat, maxBeat]);
-  const currentTime = useMemo(() => calculateTimeAtBeat(playbackBeat), [calculateTimeAtBeat, playbackBeat]);
-
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  // calculateTimeAtBeat / totalDuration / currentTime / formatTime / progressPercent / currentBpm
+  // は useViewerPlayback 이후로 이동됨 (아래 훅 호출 다음에 선언)
 
   // 컬럼 뷰 계산
   const totalMeasures = useMemo(() => Math.ceil(maxBeat / 4), [maxBeat]);
@@ -2826,6 +2787,10 @@ export function NoteChartViewer({
   const numColumns = columnsLayout === 'vertical' ? 1 : Math.ceil(totalMeasures / localMeasuresPerColumn);
   const singleColumnHeight = effectiveMeasuresPerColumn * 4 * columnBeatScale;
 
+  // BGM ended 콜백을 ref 로 보관 — useViewerPlayback 선언 전에 useBgmAudio를 호출해야 하므로
+  // 실제 핸들러는 아래 useViewerPlayback 이후에 ref 에 주입됨
+  const onBgmEndedRef = useRef<() => void>(() => {});
+
   // BGM 오디오 — useBgmAudio 훅 (maxBeat 이후에 위치해야 함)
   const {
     audioRef,
@@ -2834,13 +2799,7 @@ export function NoteChartViewer({
     audioError,
     audioProgress,
     keysoundOnlyMode,
-  } = useBgmAudio(audioUrl, maxBeat, () => {
-    // BGM ended: keysound 모드가 아닐 때 재생 종료 처리
-    if (keysoundReadyRef.current) return;
-    setIsPlaying(false);
-    playbackBeatRef.current = maxBeat;
-    setPlaybackBeat(maxBeat);
-  });
+  } = useBgmAudio(audioUrl, maxBeat, () => onBgmEndedRef.current());
 
   // Fullscreen — useFullscreen 훅
   const { isFullscreen, toggleFullscreen: _toggleFullscreen } = useFullscreen();
@@ -2848,22 +2807,6 @@ export function NoteChartViewer({
     () => _toggleFullscreen(outerContainerRef as React.RefObject<HTMLElement>),
     [_toggleFullscreen],
   );
-
-  // 재생 시작/종료 시 상태 동기화
-  const wasPlayingRef = useRef(false);
-  useEffect(() => {
-    if (isPlaying && !wasPlayingRef.current) {
-      // 재생 시작 시 played notes 초기화 (false → true 전환)
-      playedNotesRef.current.clear();
-      lastPlayedBeatRef.current = playbackBeat;
-      console.log('[NoteChartViewer] Playback started, initialized at beat:', playbackBeat);
-    } else if (!isPlaying && wasPlayingRef.current) {
-      // 재생 종료 시 scrollBeat를 현재 playbackBeat에 동기화 (true → false 전환)
-      // 이렇게 하지 않으면 카메라가 재생 전 스크롤 위치로 점프함
-      setScrollBeat(playbackBeatRef.current);
-    }
-    wasPlayingRef.current = isPlaying;
-  }, [isPlaying, playbackBeat]);
 
   // 키사운드 상태 디버깅 (임시)
   useEffect(() => {
@@ -2875,229 +2818,67 @@ export function NoteChartViewer({
     }
   }, [keysoundReady, notes, keysounds]);
 
-  // Keysound triggering is now done directly in the animation loop for precise timing
-  // (see triggerKeysoundsInRange function and animate callback)
+  // 재생 엔진 — useViewerPlayback 훅으로 위임
+  // (애니메이션 루프, togglePlayback, calculateTimeAtBeat, 재생 상태/refs 포함)
+  const {
+    isPlaying, setIsPlaying,
+    playbackBeat, setPlaybackBeat,
+    animationRef,
+    playbackBeatRef,
+    lastPlayedBeatRef,
+    playedNotesRef,
+    togglePlayback,
+    calculateTimeAtBeat,
+  } = useViewerPlayback({
+    viewMode,
+    bpm,
+    bpmChanges,
+    maxBeat,
+    audioLoaded,
+    keysoundReady,
+    playbackSpeed,
+    audioRef,
+    keysoundPlayerRef,
+    timingRef,
+    keysoundEnabledRef,
+    keysoundReadyRef,
+    setScrollBeat,
+    setPipelineLatency,
+    setSchedulingOverhead,
+    triggerKeysoundsInRange,
+    playActiveKeysoundsAtBeat,
+  });
 
-  const getBpmAtBeat = useCallback((beat: number): number => {
+  // BGM ended 핸들러를 useViewerPlayback 이후에 ref 에 주입
+  // (useBgmAudio 는 위에서 먼저 호출되어야 audioRef 를 제공함)
+  onBgmEndedRef.current = () => {
+    if (keysoundReadyRef.current) return;
+    setIsPlaying(false);
+    playbackBeatRef.current = maxBeat;
+    setPlaybackBeat(maxBeat);
+  };
+
+  // 시간 표시용 계산 (useViewerPlayback 이후에 위치)
+  const totalDuration = useMemo(() => calculateTimeAtBeat(maxBeat), [calculateTimeAtBeat, maxBeat]);
+  const currentTime = useMemo(() => calculateTimeAtBeat(playbackBeat), [calculateTimeAtBeat, playbackBeat]);
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // 현재 재생 위치의 BPM (status bar 표시용)
+  const currentBpm = useMemo(() => {
     if (!bpmChanges || bpmChanges.length === 0) return bpm;
-    let currentBpm = bpm;
-    for (const change of bpmChanges) {
-      if (change.beat <= beat) currentBpm = change.bpm;
-      else break;
+    let cur = bpm;
+    for (const c of bpmChanges) {
+      if (c.beat <= playbackBeat) cur = c.bpm; else break;
     }
-    return currentBpm;
-  }, [bpm, bpmChanges]);
+    return cur;
+  }, [bpm, bpmChanges, playbackBeat]);
 
-  // 재생 애니메이션 - Web Audio Context 기반 정밀 동기화
-  useEffect(() => {
-    if (viewMode !== 'playback' || !isPlaying) {
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-      if (audioRef.current && !isPlaying) audioRef.current.pause();
-      return;
-    }
-
-    // Guard against setState after cleanup
-    let isCancelled = false;
-    let lastUIUpdate = 0;
-    let lastLatencySample = 0;
-    const UI_UPDATE_INTERVAL = 50; // Update UI state every 50ms (20fps) instead of 60fps
-    const LATENCY_SAMPLE_INTERVAL = 500; // Sample latency every 500ms
-
-    // Web Audio Context 기반 타이밍 초기화
-    const useWebAudioTiming = keysoundPlayerRef.current && keysoundReady;
-    // timing 객체가 있으면 정확한 시간-비트 변환 사용
-    const currentTiming = timingRef.current;
-    // 시작 시점의 초 단위 시간 계산 (BPM 변화 고려)
-    const startTimeInSeconds = currentTiming
-      ? currentTiming.beatToSeconds(playbackBeat)
-      : playbackBeat * 60 / bpm;
-
-    if (useWebAudioTiming) {
-      // Web Audio의 고정밀 타이밍 사용
-      contextStartTimeRef.current = keysoundPlayerRef.current!.getContextTime();
-      startBeatRef.current = playbackBeat;
-    }
-
-    // HTML Audio는 BGM 출력용으로만 사용
-    if (audioRef.current && audioLoaded) {
-      audioRef.current.currentTime = startTimeInSeconds;
-      audioRef.current.playbackRate = playbackSpeed;
-      audioRef.current.play().catch(() => { });
-    }
-
-    const animate = (timestamp: number) => {
-      // Don't update state if effect has been cleaned up
-      if (isCancelled) return;
-
-      let newBeat: number;
-      const prevBeat = lastPlayedBeatRef.current;
-
-      if (useWebAudioTiming && keysoundPlayerRef.current) {
-        // Web Audio Context 기반 정밀 타이밍 (키사운드와 동기화)
-        const contextTime = keysoundPlayerRef.current.getContextTime();
-        let elapsedSeconds = (contextTime - contextStartTimeRef.current) * playbackSpeed;
-
-        // Safety check: elapsedSeconds가 음수이거나 비정상적으로 크면 타이밍 기준 리셋
-        // (게임 모드 전환 후 컨텍스트 시간이 맞지 않는 경우 방지)
-        if (elapsedSeconds < 0 || !Number.isFinite(elapsedSeconds)) {
-          contextStartTimeRef.current = contextTime;
-          elapsedSeconds = 0;
-        }
-
-        const currentTimeInSec = startTimeInSeconds + elapsedSeconds;
-
-        // timing 객체가 있으면 정확한 시간→비트 변환 (BPM 변화 고려)
-        if (currentTiming) {
-          newBeat = currentTiming.secondsToBeat(currentTimeInSec);
-        } else {
-          const currentBpm = getBpmAtBeat(startBeatRef.current);
-          newBeat = startBeatRef.current + elapsedSeconds * (currentBpm / 60);
-        }
-
-        // NaN/Infinity 방지
-        if (!Number.isFinite(newBeat) || newBeat < 0) {
-          newBeat = prevBeat >= 0 ? prevBeat : 0;
-        }
-
-        if (newBeat >= maxBeat) {
-          if (!isCancelled) {
-            playbackBeatRef.current = maxBeat;
-            setPlaybackBeat(maxBeat);
-            setIsPlaying(false);
-          }
-          return;
-        }
-        // Always update ref for smooth camera animation
-        playbackBeatRef.current = newBeat;
-        // Only update state periodically for UI elements (progress bar, time display)
-        if (!isCancelled && timestamp - lastUIUpdate > UI_UPDATE_INTERVAL) {
-          setPlaybackBeat(newBeat);
-          lastUIUpdate = timestamp;
-        }
-      } else if (audioRef.current && audioLoaded) {
-        // Fallback: HTML Audio 기반 타이밍 (키사운드 없을 때)
-        const audioTime = audioRef.current.currentTime;
-        // timing 객체가 있으면 정확한 시간→비트 변환 (BPM 변화 고려)
-        if (currentTiming) {
-          newBeat = currentTiming.secondsToBeat(audioTime);
-        } else {
-          newBeat = audioTime / (60 / bpm);
-        }
-        // NaN/Infinity 방지
-        if (!Number.isFinite(newBeat) || newBeat < 0) {
-          newBeat = prevBeat >= 0 ? prevBeat : 0;
-        }
-        if (newBeat >= maxBeat) {
-          if (!isCancelled) {
-            playbackBeatRef.current = maxBeat;
-            setPlaybackBeat(maxBeat);
-            setIsPlaying(false);
-          }
-          return;
-        }
-        playbackBeatRef.current = newBeat;
-        if (!isCancelled && timestamp - lastUIUpdate > UI_UPDATE_INTERVAL) {
-          setPlaybackBeat(newBeat);
-          lastUIUpdate = timestamp;
-        }
-      } else {
-        // Fallback: requestAnimationFrame 기반 타이밍 (오디오 없을 때)
-        if (!lastTimeRef.current) lastTimeRef.current = timestamp;
-        const deltaTime = timestamp - lastTimeRef.current;
-        lastTimeRef.current = timestamp;
-
-        // timing 객체가 있으면 정확한 시간 기반 계산
-        if (currentTiming) {
-          const prevTimeInSec = prevBeat >= 0 ? currentTiming.beatToSeconds(prevBeat) : 0;
-          const newTimeInSec = prevTimeInSec + (deltaTime / 1000) * playbackSpeed;
-          newBeat = currentTiming.secondsToBeat(newTimeInSec);
-        } else {
-          const currentBpm = getBpmAtBeat(prevBeat >= 0 ? prevBeat : 0);
-          newBeat = (prevBeat >= 0 ? prevBeat : 0) + (deltaTime * playbackSpeed) / (60000 / currentBpm);
-        }
-
-        // NaN/Infinity 방지
-        if (!Number.isFinite(newBeat) || newBeat < 0) {
-          newBeat = prevBeat >= 0 ? prevBeat : 0;
-        }
-
-        if (newBeat >= maxBeat) {
-          if (!isCancelled) {
-            playbackBeatRef.current = maxBeat;
-            setPlaybackBeat(maxBeat);
-            setIsPlaying(false);
-          }
-          return;
-        }
-        playbackBeatRef.current = newBeat;
-        if (!isCancelled && timestamp - lastUIUpdate > UI_UPDATE_INTERVAL) {
-          setPlaybackBeat(newBeat);
-          lastUIUpdate = timestamp;
-        }
-      }
-
-      // Trigger keysounds directly in animation loop for precise timing
-      if (prevBeat >= 0 && newBeat > prevBeat) {
-        triggerKeysoundsInRange(prevBeat, newBeat);
-      }
-      lastPlayedBeatRef.current = newBeat;
-
-      // Sample keysound latency periodically
-      if (keysoundPlayerRef.current && timestamp - lastLatencySample > LATENCY_SAMPLE_INTERVAL) {
-        lastLatencySample = timestamp;
-        const pipeline = keysoundPlayerRef.current.getPipelineLatency();
-        const overhead = keysoundPlayerRef.current.getSchedulingOverhead();
-        if (pipeline !== null) setPipelineLatency(pipeline);
-        if (overhead !== null) setSchedulingOverhead(overhead);
-      }
-
-      if (!isCancelled) {
-        animationRef.current = requestAnimationFrame(animate);
-      }
-    };
-
-    lastTimeRef.current = 0;
-    animationRef.current = requestAnimationFrame(animate);
-    return () => {
-      isCancelled = true;
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    };
-  }, [viewMode, isPlaying, bpm, maxBeat, audioLoaded, keysoundReady, getBpmAtBeat, playbackSpeed, triggerKeysoundsInRange]);
-
-  const togglePlayback = useCallback(async () => {
-    if (isPlaying) {
-      setIsPlaying(false);
-      if (audioRef.current) audioRef.current.pause();
-      if (keysoundPlayerRef.current) {
-        keysoundPlayerRef.current.stopAll();
-        keysoundPlayerRef.current.resetLatencySamples();
-      }
-      setPipelineLatency(null);
-      setSchedulingOverhead(null);
-    } else {
-      // 브라우저 정책상 AudioContext는 사용자 상호작용 후에만 재생 가능
-      // 재생 시작 전에 resume 호출
-      if (keysoundPlayerRef.current && keysoundReady) {
-        await keysoundPlayerRef.current.resume();
-      }
-      if (playbackBeat >= maxBeat) {
-        playbackBeatRef.current = 0;
-        setPlaybackBeat(0);
-        setScrollBeat(0);
-        playedNotesRef.current.clear();
-        lastPlayedBeatRef.current = 0;
-        if (audioRef.current) audioRef.current.currentTime = 0;
-      } else if (playbackBeat > 0) {
-        // 중간 위치에서 재생 시작 시, 해당 위치에서 아직 재생 중인 키음들을 offset과 함께 재생
-        playedNotesRef.current.clear();
-        lastPlayedBeatRef.current = playbackBeat;
-        if (keysoundReady && keysoundPlayerRef.current) {
-          playActiveKeysoundsAtBeat(playbackBeat, calculateTimeAtBeat);
-        }
-      }
-      setIsPlaying(true);
-    }
-  }, [isPlaying, playbackBeat, maxBeat, keysoundReady, playActiveKeysoundsAtBeat, calculateTimeAtBeat]);
+  // 진행률 (프로그레스 바용)
+  const progressPercent = viewMode === 'playback' ? (playbackBeat / maxBeat) * 100 : (scrollBeat / maxBeat) * 100;
 
   // viewMode 변경 시 위치 동기화 (리셋하지 않음)
   useEffect(() => {
@@ -4136,11 +3917,8 @@ export function NoteChartViewer({
               {schedulingOverhead !== null ? ` + ${schedulingOverhead.toFixed(2)}` : ''}ms
             </span>
           )}
-          {viewMode === 'playback' && bpmChanges && bpmChanges.length > 0 && (
-            <span className="text-orange-400">BPM {Math.round(getBpmAtBeat(playbackBeat))}</span>
-          )}
-          {viewMode === 'playback' && (!bpmChanges || bpmChanges.length === 0) && (
-            <span className="text-orange-400">BPM {bpm}</span>
+          {viewMode === 'playback' && (
+            <span className="text-orange-400">BPM {Math.round(currentBpm)}</span>
           )}
           {laneOption !== 'normal' && <span className="text-green-400 capitalize">{laneOption}</span>}
           {hiSpeed !== 1 && <span className="text-cyan-400">HS ×{hiSpeed}</span>}
