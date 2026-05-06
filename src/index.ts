@@ -69,3 +69,7 @@ export { FilePickerCombobox } from './chart/panels/FilePickerCombobox';
 
 // Utility
 export { cn, getErrorMessage } from './utils';
+
+// i18n (consumer-injected via <I18nProvider>)
+export { I18nProvider, useI18n, fallbackTranslate, defaultMessages } from './i18n';
+export type { BmsEditorMessages, BmsEditorI18nKey, I18nProviderValue, Translator } from './i18n';

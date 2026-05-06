@@ -8,6 +8,7 @@
 import React from 'react';
 import { Music, Grid3x3, MousePointer2, ZoomIn, Navigation } from 'lucide-react';
 import { cn } from '../../utils';
+import { useI18n } from '../../i18n';
 import type { GridSnap } from '../NoteChartEditor';
 
 interface StatusBarProps {
@@ -39,6 +40,7 @@ export const StatusBar = React.memo(function StatusBar({
   audioReady,
   className,
 }: StatusBarProps) {
+  const { t } = useI18n();
   const measure = Math.floor(currentBeat / 4);
   const beatInMeasure = (currentBeat % 4).toFixed(2);
 
@@ -49,39 +51,39 @@ export const StatusBar = React.memo(function StatusBar({
         className
       )}
     >
-      {/* ── 좌측: 탐색 정보 ── */}
+      {/* ── Left: navigation info ── */}
       <div className="flex items-center gap-3 min-w-0">
-        {/* 현재 위치 */}
-        <div className="flex items-center gap-1 shrink-0" title="현재 위치 (마디·박자)">
+        {/* current position */}
+        <div className="flex items-center gap-1 shrink-0" title={t('panels.statusBar.currentPositionTooltip')}>
           <Navigation className="h-3 w-3" />
           <span className="font-mono whitespace-nowrap">
-            {String(measure).padStart(3, '0')}마디 · {beatInMeasure}박
+            {String(measure).padStart(3, '0')}{t('panels.statusBar.measureLabel')} · {beatInMeasure}{t('panels.statusBar.beatLabel')}
           </span>
         </div>
 
         <div className="h-3 w-px bg-muted-foreground/20 shrink-0" />
 
-        {/* 그리드 */}
-        <div className="flex items-center gap-1 shrink-0" title="그리드 스냅">
+        {/* grid */}
+        <div className="flex items-center gap-1 shrink-0" title={t('panels.statusBar.gridSnapTooltip')}>
           <Grid3x3 className="h-3 w-3" />
           <span className="whitespace-nowrap">1/{gridSnap}</span>
         </div>
 
-        {/* 선택 */}
-        <div className="flex items-center gap-1 shrink-0" title="선택된 노트">
+        {/* selection */}
+        <div className="flex items-center gap-1 shrink-0" title={t('panels.statusBar.selectedNotesTooltip')}>
           <MousePointer2 className="h-3 w-3" />
           <span className="whitespace-nowrap">
-            {selectedCount > 0 ? `${selectedCount}개 선택` : '선택 없음'}
+            {selectedCount > 0 ? t('panels.statusBar.selectedCount', { count: selectedCount }) : t('panels.statusBar.noSelection')}
           </span>
         </div>
 
-        {/* 총 노트 */}
-        <div className="shrink-0 whitespace-nowrap" title="총 노트 수">
-          총 {totalNotes}개
+        {/* total notes */}
+        <div className="shrink-0 whitespace-nowrap" title={t('panels.statusBar.totalNotesTooltip')}>
+          {t('panels.statusBar.totalCount', { count: totalNotes })}
         </div>
       </div>
 
-      {/* ── 우측: 재생 정보 ── */}
+      {/* ── Right: playback info ── */}
       <div className="flex items-center gap-3 shrink-0 ml-4">
         {/* BPM */}
         <div className="flex items-center gap-1" title="BPM">
@@ -89,20 +91,20 @@ export const StatusBar = React.memo(function StatusBar({
           <span className="whitespace-nowrap">{bpm} BPM</span>
         </div>
 
-        {/* 노트 두께 */}
-        <div className="flex items-center gap-1" title="노트 두께">
+        {/* note height */}
+        <div className="flex items-center gap-1" title={t('panels.statusBar.noteHeightTooltip')}>
           <ZoomIn className="h-3 w-3" />
           <span className="whitespace-nowrap">{noteHeight}</span>
         </div>
 
-        {/* 오디오 상태 */}
+        {/* audio state */}
         {audioReady !== undefined && (
           <div
             className={cn(
               'flex items-center gap-1',
               audioReady ? 'text-green-500' : 'text-muted-foreground'
             )}
-            title={audioReady ? '오디오 준비됨' : '오디오 미로드'}
+            title={audioReady ? t('panels.statusBar.audioReadyTooltip') : t('panels.statusBar.audioMissingTooltip')}
           >
             <div
               className={cn(
@@ -110,7 +112,7 @@ export const StatusBar = React.memo(function StatusBar({
                 audioReady ? 'bg-green-500' : 'bg-muted-foreground/50'
               )}
             />
-            <span>{audioReady ? '오디오' : '음소거'}</span>
+            <span>{audioReady ? t('panels.statusBar.audioOn') : t('panels.statusBar.audioOff')}</span>
           </div>
         )}
       </div>

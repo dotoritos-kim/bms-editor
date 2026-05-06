@@ -9,6 +9,7 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { Info, Music, MapPin, Clock, Layers, Plus, X } from 'lucide-react';
 import { cn } from '../../utils';
+import { useI18n } from '../../i18n';
 import type { EditableBMSNote, BMSBpmChange, BMSStopEvent } from '@rhythm-archive/bms-core';
 import type { GridSnap } from '../NoteChartEditor';
 
@@ -155,6 +156,7 @@ export const NoteInfoPanel = React.memo(function NoteInfoPanel({
   currentKeysound,
   className,
 }: NoteInfoPanelProps) {
+  const { t } = useI18n();
   const [addLayerType, setAddLayerType] = useState<'invisible' | 'bgm'>('invisible');
 
   const handleAddLayer = useCallback(() => {
@@ -174,7 +176,7 @@ export const NoteInfoPanel = React.memo(function NoteInfoPanel({
     const wavFilename = wavDefinitions.get(singleNote.keysound) || '';
     const keysoundDisplay =
       singleNote.keysound === '00'
-        ? '00 (무음)'
+        ? t('panels.noteInfo.values.silentKeysound')
         : `${singleNote.keysound}${wavFilename ? ` → ${wavFilename}` : ''}`;
 
     const timeSeconds = beatToSeconds(singleNote.beat, initialBpm, bpmChanges, stopEvents);
@@ -196,7 +198,7 @@ export const NoteInfoPanel = React.memo(function NoteInfoPanel({
       lnEndTime,
       lnLength,
     };
-  }, [singleNote, wavDefinitions, bpmChanges, stopEvents, initialBpm, gridSnap]);
+  }, [singleNote, wavDefinitions, bpmChanges, stopEvents, initialBpm, gridSnap, t]);
 
   // 다중 선택 요약 정보
   const multiSummary = useMemo(() => {
@@ -239,32 +241,32 @@ export const NoteInfoPanel = React.memo(function NoteInfoPanel({
         <div className="px-3 py-2 border-b">
           <h3 className="text-sm font-semibold flex items-center gap-1.5">
             <Info className="h-3.5 w-3.5" />
-            노트 정보
+            {t('panels.noteInfo.title')}
           </h3>
         </div>
         <div className="p-4 text-center text-xs text-muted-foreground">
-          노트를 선택하면 정보가 표시됩니다
+          {t('panels.noteInfo.empty')}
         </div>
       </div>
     );
   }
 
-  // 다중 선택 요약
+  // multi-selection summary
   if (multiSummary) {
     return (
       <div className={cn('flex flex-col', className)}>
         <div className="px-3 py-2 border-b">
           <h3 className="text-sm font-semibold flex items-center gap-1.5">
             <Layers className="h-3.5 w-3.5" />
-            선택 요약
+            {t('panels.noteInfo.multiTitle')}
           </h3>
         </div>
         <div className="px-3 py-2 text-xs space-y-0.5">
-          <InfoRow label="선택" value={`${multiSummary.count}개 노트`} />
-          <InfoRow label="타입" value={multiSummary.typeEntries} />
-          <InfoRow label="컬럼" value={multiSummary.columnList} mono />
-          <InfoRow label="비트 범위" value={multiSummary.beatRange} mono />
-          <InfoRow label="키음" value={`${multiSummary.keysoundCount}개 고유`} />
+          <InfoRow label={t('panels.noteInfo.labels.selection')} value={t('panels.noteInfo.values.notesCount', { count: multiSummary.count })} />
+          <InfoRow label={t('panels.noteInfo.labels.type')} value={multiSummary.typeEntries} />
+          <InfoRow label={t('panels.noteInfo.labels.column')} value={multiSummary.columnList} mono />
+          <InfoRow label={t('panels.noteInfo.labels.beatRange')} value={multiSummary.beatRange} mono />
+          <InfoRow label={t('panels.noteInfo.labels.keysound')} value={t('panels.noteInfo.values.uniqueKeysoundsCount', { count: multiSummary.keysoundCount })} />
         </div>
       </div>
     );
@@ -281,35 +283,35 @@ export const NoteInfoPanel = React.memo(function NoteInfoPanel({
       <div className="px-3 py-2 border-b">
         <h3 className="text-sm font-semibold flex items-center gap-1.5">
           <Info className="h-3.5 w-3.5" />
-          노트 정보
+          {t('panels.noteInfo.title')}
         </h3>
       </div>
       <div className="px-3 py-2 text-xs space-y-0.5">
-        {/* 타입 */}
-        <InfoRow label="타입" value={noteTypeLabel(singleNote.noteType)} />
+        {/* type */}
+        <InfoRow label={t('panels.noteInfo.labels.type')} value={noteTypeLabel(singleNote.noteType)} />
 
-        {/* 컬럼 */}
+        {/* column */}
         {singleNote.column && (
-          <InfoRow label="컬럼" value={singleNote.column} mono />
+          <InfoRow label={t('panels.noteInfo.labels.column')} value={singleNote.column} mono />
         )}
 
-        {/* 키음 */}
+        {/* keysound */}
         <div className="flex justify-between items-start py-0.5">
           <span className="text-muted-foreground flex items-center gap-1">
             <Music className="h-3 w-3" />
-            키음
+            {t('panels.noteInfo.labels.keysound')}
           </span>
           <span className="font-mono text-right max-w-[120px] truncate" title={noteDetails.keysoundDisplay}>
             {noteDetails.keysoundDisplay}
           </span>
         </div>
 
-        {/* 멀티 키음 레이어 */}
+        {/* multi keysound layers */}
         {(singleNote.additionalKeysounds && singleNote.additionalKeysounds.length > 0) && (
           <div className="mt-1 pt-1 border-t border-dashed">
             <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
               <Layers className="h-3 w-3" />
-              레이어
+              {t('panels.noteInfo.labels.layer')}
             </div>
             {singleNote.additionalKeysounds.map((layer, i) => {
               const layerFilename = wavDefinitions.get(layer.keysound) || '';
@@ -325,7 +327,7 @@ export const NoteInfoPanel = React.memo(function NoteInfoPanel({
                     <button
                       onClick={() => onRemoveKeysoundLayer(singleNote.id, i)}
                       className="p-1 hover:text-destructive shrink-0"
-                      title="레이어 삭제"
+                      title={t('panels.noteInfo.tooltips.deleteLayer')}
                     >
                       <X className="h-2.5 w-2.5" />
                     </button>
@@ -336,7 +338,7 @@ export const NoteInfoPanel = React.memo(function NoteInfoPanel({
           </div>
         )}
 
-        {/* 레이어 추가 */}
+        {/* add layer */}
         {onAddKeysoundLayer && currentKeysound && (
           <div className="mt-1 pt-1 border-t border-dashed">
             <div className="flex items-center gap-1">
@@ -351,7 +353,7 @@ export const NoteInfoPanel = React.memo(function NoteInfoPanel({
               <button
                 onClick={handleAddLayer}
                 className="flex items-center gap-0.5 px-1.5 py-0.5 text-xs rounded bg-primary/10 hover:bg-primary/20 text-primary shrink-0"
-                title={`키음 ${currentKeysound} 레이어 추가`}
+                title={t('panels.noteInfo.tooltips.addLayer', { id: currentKeysound })}
               >
                 <Plus className="h-2.5 w-2.5" />
                 {currentKeysound}
@@ -360,38 +362,38 @@ export const NoteInfoPanel = React.memo(function NoteInfoPanel({
           </div>
         )}
 
-        {/* 위치 */}
+        {/* position */}
         <div className="mt-1 pt-1 border-t border-dashed">
           <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
             <MapPin className="h-3 w-3" />
-            위치
+            {t('panels.noteInfo.labels.position')}
           </div>
-          <InfoRow label="비트" value={singleNote.beat.toFixed(4)} mono />
-          <InfoRow label="마디" value={formatBeatPosition(singleNote.beat)} mono />
+          <InfoRow label={t('panels.noteInfo.labels.beat')} value={singleNote.beat.toFixed(4)} mono />
+          <InfoRow label={t('panels.noteInfo.labels.measure')} value={formatBeatPosition(singleNote.beat)} mono />
           <InfoRow
-            label="그리드"
-            value={noteDetails.onGrid ? `1/${gridSnap} 정렬` : '비정렬'}
+            label={t('panels.noteInfo.labels.grid')}
+            value={noteDetails.onGrid ? t('panels.noteInfo.values.gridAligned', { snap: gridSnap }) : t('panels.noteInfo.values.gridUnaligned')}
           />
         </div>
 
-        {/* 타이밍 */}
+        {/* timing */}
         <div className="mt-1 pt-1 border-t border-dashed">
           <div className="flex items-center gap-1 text-muted-foreground mb-0.5">
             <Clock className="h-3 w-3" />
-            타이밍
+            {t('panels.noteInfo.labels.timing')}
           </div>
-          <InfoRow label="재생 시점" value={`${noteDetails.timeSeconds.toFixed(3)}s`} mono />
-          <InfoRow label="채널" value={singleNote.channel} mono />
+          <InfoRow label={t('panels.noteInfo.labels.playTime')} value={`${noteDetails.timeSeconds.toFixed(3)}s`} mono />
+          <InfoRow label={t('panels.noteInfo.labels.channel')} value={singleNote.channel} mono />
         </div>
 
-        {/* 롱노트 정보 */}
+        {/* long note info */}
         {noteDetails.hasLongNote && singleNote.endBeat !== undefined && (
           <div className="mt-1 pt-1 border-t border-dashed">
-            <div className="text-muted-foreground mb-0.5">롱노트</div>
-            <InfoRow label="종료 비트" value={singleNote.endBeat.toFixed(4)} mono />
-            <InfoRow label="길이" value={`${noteDetails.lnLength?.toFixed(4)} beats`} mono />
+            <div className="text-muted-foreground mb-0.5">{t('panels.noteInfo.labels.longNote')}</div>
+            <InfoRow label={t('panels.noteInfo.labels.endBeat')} value={singleNote.endBeat.toFixed(4)} mono />
+            <InfoRow label={t('panels.noteInfo.labels.length')} value={`${noteDetails.lnLength?.toFixed(4)} beats`} mono />
             {noteDetails.lnEndTime !== undefined && (
-              <InfoRow label="종료 시점" value={`${noteDetails.lnEndTime.toFixed(3)}s`} mono />
+              <InfoRow label={t('panels.noteInfo.labels.endTime')} value={`${noteDetails.lnEndTime.toFixed(3)}s`} mono />
             )}
           </div>
         )}
