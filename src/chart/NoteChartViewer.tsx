@@ -28,26 +28,10 @@ import { useKeysoundLifecycle } from './viewer/hooks/useKeysoundLifecycle';
 import { useFullscreen } from './viewer/hooks/useFullscreen';
 import { useViewerScroll } from './viewer/hooks/useViewerScroll';
 import { useViewerKeyboard } from './viewer/hooks/useViewerKeyboard';
-
-/** Equalizer band setting */
-interface EqualizerBand {
-  frequency: number;
-  gain: number;
-}
-
-/** Equalizer settings */
-interface EqualizerSettings {
-  enabled: boolean;
-  preset: string;
-  bands: EqualizerBand[];
-}
-
-/** Effector settings */
-interface EffectorSettings {
-  compressor: { enabled: boolean; threshold: number; ratio: number; attack: number; release: number };
-  reverb: { enabled: boolean; mix: number; decay: number };
-  stereo: { enabled: boolean; width: number };
-}
+import { useViewerSettings } from './viewer/hooks/useViewerSettings';
+import { useViewerAudioSettings } from './viewer/hooks/useViewerAudioSettings';
+// EqualizerBand/EqualizerSettings/EffectorSettings 는 useKeysoundLifecycle 에서 export 됨
+import type { EqualizerBand, EqualizerSettings, EffectorSettings } from './viewer/hooks/useKeysoundLifecycle';
 
 // 뷰 모드 타입
 export type ViewMode = 'scroll' | 'playback' | 'columns';
@@ -2438,56 +2422,42 @@ export function NoteChartViewer({
   const startBeatRef = useRef(0); // 재생 시작 시점의 비트
   // BGM/Fullscreen state는 maxBeat 선언 이후 훅 호출로 처리 (아래 참조)
 
-  // BMS Options
-  const [showSettings, setShowSettings] = useState(false);
-  const [localNoteFilter, setLocalNoteFilter] = useState<NoteTypeFilter>(noteTypeFilter);
-  const [laneOption, setLaneOption] = useState<LaneOption>('normal');
-  const [randomSeed] = useState(() => Math.floor(Math.random() * 1000000));
-  const [hiSpeed, setHiSpeed] = useState(3);
-  const [playbackSpeed, setPlaybackSpeed] = useState(1);
-  const [localMeasuresPerColumn, setLocalMeasuresPerColumn] = useState(measuresPerColumn);
-  const [columnsLayout, setColumnsLayout] = useState<ColumnsLayout>('horizontal');
-  const [verticalScrollY, setVerticalScrollY] = useState(0); // 세로 모드 스크롤 위치
-  const [scrollSpeed, setScrollSpeed] = useState(1); // 음원 재생 속도와 분리된 스크롤 속도
-  const [gridDivision, setGridDivision] = useState(4); // 비트당 그리드 라인 수
-  const [showMinimap, setShowMinimap] = useState(true); // 미니맵 표시 여부
-  const [chartWidthOverride, setChartWidthOverride] = useState<number | null>(null); // 차트 가로 크기 (px), null이면 자동
-  const [chartHeightOverride, setChartHeightOverride] = useState<number | null>(null); // 캔버스 세로 크기 (px), null이면 기본값
-  const [aspectRatioLocked, setAspectRatioLocked] = useState(false); // 가로/세로 비율 고정
-  const [scaleWidthByScroll, setScaleWidthByScroll] = useState(false); // 스크롤 속도에 따른 노트 높이(두께) 스케일링
-  const [timingMarkerSettings, setTimingMarkerSettings] = useState<TimingMarkerSettings>(
-    initialTimingMarkerSettings ?? DEFAULT_TIMING_MARKER_SETTINGS
-  );
-
-  const [pipelineLatency, setPipelineLatency] = useState<number | null>(null);
-  const [schedulingOverhead, setSchedulingOverhead] = useState<number | null>(null);
-  const [keysoundEnabled, setKeysoundEnabled] = useState(showKeysounds);
-
-  // Audio settings (defaults, no external preferences store)
-  const [keysoundVolume, setKeysoundVolume] = useState(50); // 0-100 scale
-  const [keysoundMuted, setKeysoundMuted] = useState(false);
-  const [audioDialogOpen, setAudioDialogOpen] = useState(false);
-  const [localEqualizer, setLocalEqualizer] = useState<EqualizerSettings>({
-    enabled: false,
-    preset: 'flat',
-    bands: [
-      { frequency: 31, gain: 0 },
-      { frequency: 63, gain: 0 },
-      { frequency: 125, gain: 0 },
-      { frequency: 250, gain: 0 },
-      { frequency: 500, gain: 0 },
-      { frequency: 1000, gain: 0 },
-      { frequency: 2000, gain: 0 },
-      { frequency: 4000, gain: 0 },
-      { frequency: 8000, gain: 0 },
-      { frequency: 16000, gain: 0 },
-    ],
+  // BMS 표시 설정 — useViewerSettings 훅으로 위임
+  const {
+    showSettings, setShowSettings,
+    localNoteFilter, setLocalNoteFilter,
+    laneOption, setLaneOption,
+    randomSeed,
+    hiSpeed, setHiSpeed,
+    playbackSpeed, setPlaybackSpeed,
+    scrollSpeed, setScrollSpeed,
+    localMeasuresPerColumn, setLocalMeasuresPerColumn,
+    columnsLayout, setColumnsLayout,
+    verticalScrollY, setVerticalScrollY,
+    gridDivision, setGridDivision,
+    showMinimap, setShowMinimap,
+    chartWidthOverride, setChartWidthOverride,
+    chartHeightOverride, setChartHeightOverride,
+    aspectRatioLocked, setAspectRatioLocked,
+    scaleWidthByScroll, setScaleWidthByScroll,
+    timingMarkerSettings, setTimingMarkerSettings,
+  } = useViewerSettings({
+    initialNoteTypeFilter: noteTypeFilter,
+    initialMeasuresPerColumn: measuresPerColumn,
+    initialTimingMarkerSettings,
   });
-  const [localEffector, setLocalEffector] = useState<EffectorSettings>({
-    compressor: { enabled: false, threshold: -24, ratio: 4, attack: 0.003, release: 0.25 },
-    reverb: { enabled: false, mix: 0.3, decay: 1.5 },
-    stereo: { enabled: false, width: 1 },
-  });
+
+  // 오디오 설정 — useViewerAudioSettings 훅으로 위임
+  const {
+    keysoundEnabled, setKeysoundEnabled,
+    keysoundVolume, setKeysoundVolume,
+    keysoundMuted, setKeysoundMuted,
+    audioDialogOpen, setAudioDialogOpen,
+    localEqualizer, setLocalEqualizer,
+    localEffector, setLocalEffector,
+    pipelineLatency, setPipelineLatency,
+    schedulingOverhead, setSchedulingOverhead,
+  } = useViewerAudioSettings({ initialKeysoundEnabled: showKeysounds });
 
   // 키사운드 라이프사이클 — useKeysoundLifecycle 훅으로 위임
   const {
