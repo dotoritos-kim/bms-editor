@@ -19,6 +19,7 @@ import * as THREE from 'three';
 import type { Line2, LineSegments2 } from 'three-stdlib';
 import { Play, Pause, Maximize2, Minimize2, GripVertical, Volume2, VolumeX, ZoomIn, ZoomOut, RotateCcw, Settings, Eye, Bomb, Music, Ghost, FlipHorizontal, SkipBack, SkipForward, Loader2, LayoutGrid, Rows3, Map as MapIcon, Link2, Link2Off } from 'lucide-react';
 import { cn } from '../utils';
+import { useI18n } from '../i18n';
 import type { BMSNote } from '@rhythm-archive/bms-core';
 import { Positioning, Timing } from '@rhythm-archive/bms-core';
 import { KeysoundPlayer } from './KeysoundPlayer';
@@ -159,6 +160,7 @@ const NumberInputWithPresets = React.memo(function NumberInputWithPresets({
   allowDecimal = true,
   inputWidth = 'w-16',
 }: NumberInputWithPresetsProps) {
+  const { t } = useI18n();
   const [inputValue, setInputValue] = useState(String(value));
   const [isFocused, setIsFocused] = useState(false);
 
@@ -251,7 +253,7 @@ const NumberInputWithPresets = React.memo(function NumberInputWithPresets({
             : "bg-muted/50 text-muted-foreground border-transparent hover:border-muted-foreground/30",
           isFocused && "border-cyan-500 bg-background"
         )}
-        title={`직접 입력 (${min} ~ ${max})`}
+        title={t('viewer.numberInput.manualEntryTitle', { min, max })}
       />
     </div>
   );
@@ -1698,6 +1700,7 @@ function Minimap({
   judgmentLinePosition: number;
   positioning?: Positioning | null;
 }) {
+  const { t } = useI18n();
   // 스크롤 기믹 적용 위치 계산 (미니맵용)
   const getMinimapPosition = useCallback((beat: number) => {
     return positioning ? positioning.position(beat) : beat;
@@ -1849,7 +1852,7 @@ function Minimap({
         height={minimapHeight}
         onClick={handleClick}
         className="cursor-pointer"
-        title="클릭하여 해당 위치로 이동"
+        title={t('viewer.timeline.clickToSeek')}
       />
       <div className="text-xs text-center py-1 px-2 bg-muted/50 border-t text-muted-foreground">
         {Math.floor(currentBeat / 4)}/{Math.floor(maxBeat / 4)} 마디
@@ -2368,6 +2371,7 @@ export function NoteChartViewer({
   scrollToBeat,
   unchangedOpacity,
 }: NoteChartViewerProps) {
+  const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
   const outerContainerRef = useRef<HTMLDivElement>(null);
   // audioRef, keysoundPlayerRef는 훅(useBgmAudio / useKeysoundLifecycle)에서 반환됨
@@ -3373,7 +3377,7 @@ export function NoteChartViewer({
               <button
                 onClick={() => { setChartWidthOverride(null); if (aspectRatioLocked) setChartHeightOverride(null); }}
                 className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                title="기본값으로 리셋"
+                title={t('viewer.timing.resetToDefault')}
               >
                 (리셋)
               </button>
@@ -3385,7 +3389,7 @@ export function NoteChartViewer({
                 "flex items-center gap-1 px-1.5 py-1 rounded text-xs transition-colors",
                 aspectRatioLocked ? "bg-blue-500/20 text-blue-400" : "bg-muted/50 text-muted-foreground"
               )}
-              title={aspectRatioLocked ? "비율 고정 해제" : "가로/세로 비율 고정"}
+              title={aspectRatioLocked ? t('viewer.aspect.unlockTooltip') : t('viewer.aspect.lockTooltip')}
             >
               {aspectRatioLocked ? <Link2 className="h-3 w-3" /> : <Link2Off className="h-3 w-3" />}
             </button>
@@ -3409,7 +3413,7 @@ export function NoteChartViewer({
               <button
                 onClick={() => { setChartHeightOverride(null); if (aspectRatioLocked) setChartWidthOverride(null); }}
                 className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                title="기본값으로 리셋"
+                title={t('viewer.timing.resetToDefault')}
               >
                 (리셋)
               </button>
@@ -3596,7 +3600,7 @@ export function NoteChartViewer({
                 value={timingMarkerSettings.bpm.color}
                 onChange={(e) => setTimingMarkerSettings(s => ({ ...s, bpm: { ...s.bpm, color: e.target.value } }))}
                 className="w-6 h-6 rounded cursor-pointer border-0 bg-transparent"
-                title="BPM 색상"
+                title={t('viewer.timing.bpmColor')}
               />
               <NumberInputWithPresets
                 value={timingMarkerSettings.bpm.fontSize}
@@ -3617,7 +3621,7 @@ export function NoteChartViewer({
                 min={10}
                 max={100}
                 className="w-16 h-1 accent-emerald-500"
-                title={`투명도: ${Math.round(timingMarkerSettings.bpm.opacity * 100)}%`}
+                title={t('viewer.timing.opacity', { percent: Math.round(timingMarkerSettings.bpm.opacity * 100) })}
               />
             </div>
 
@@ -3635,7 +3639,7 @@ export function NoteChartViewer({
                 value={timingMarkerSettings.stop.color}
                 onChange={(e) => setTimingMarkerSettings(s => ({ ...s, stop: { ...s.stop, color: e.target.value } }))}
                 className="w-6 h-6 rounded cursor-pointer border-0 bg-transparent"
-                title="STOP 색상"
+                title={t('viewer.timing.stopColor')}
               />
               <NumberInputWithPresets
                 value={timingMarkerSettings.stop.fontSize}
@@ -3656,7 +3660,7 @@ export function NoteChartViewer({
                 min={10}
                 max={100}
                 className="w-16 h-1 accent-red-500"
-                title={`투명도: ${Math.round(timingMarkerSettings.stop.opacity * 100)}%`}
+                title={t('viewer.timing.opacity', { percent: Math.round(timingMarkerSettings.stop.opacity * 100) })}
               />
             </div>
 
@@ -3674,7 +3678,7 @@ export function NoteChartViewer({
                 value={timingMarkerSettings.scroll.color}
                 onChange={(e) => setTimingMarkerSettings(s => ({ ...s, scroll: { ...s.scroll, color: e.target.value } }))}
                 className="w-6 h-6 rounded cursor-pointer border-0 bg-transparent"
-                title="SCROLL 색상"
+                title={t('viewer.timing.scrollColor')}
               />
               <NumberInputWithPresets
                 value={timingMarkerSettings.scroll.fontSize}
@@ -3695,7 +3699,7 @@ export function NoteChartViewer({
                 min={10}
                 max={100}
                 className="w-16 h-1 accent-cyan-500"
-                title={`투명도: ${Math.round(timingMarkerSettings.scroll.opacity * 100)}%`}
+                title={t('viewer.timing.opacity', { percent: Math.round(timingMarkerSettings.scroll.opacity * 100) })}
               />
             </div>
           </div>
@@ -3899,19 +3903,22 @@ export function NoteChartViewer({
       <div className="p-2 text-xs text-muted-foreground border-t flex items-center justify-between">
         <span>
           {viewMode === 'playback' && (isPlaying
-            ? (keysoundReady ? `재생 중 (${playbackSpeed}x)` : audioLoaded ? `재생 중 (BGM, ${playbackSpeed}x)` : keysoundOnlyMode ? `재생 중 (Keysound, ${playbackSpeed}x)` : `재생 중 (BPM 기준, ${playbackSpeed}x)`)
-            : "Space로 재생 • 클릭으로 이동")}
-          {viewMode === 'scroll' && "드래그/스크롤로 탐색 • Ctrl+휠로 줌 • 방향키로 이동"}
-          {isFullscreen && " • ESC로 전체화면 종료"}
+            ? (keysoundReady ? t('viewer.playback.playingNormal', { speed: playbackSpeed })
+                : audioLoaded ? t('viewer.playback.playingBgm', { speed: playbackSpeed })
+                : keysoundOnlyMode ? t('viewer.playback.playingKeysound', { speed: playbackSpeed })
+                : t('viewer.playback.playingBpm', { speed: playbackSpeed }))
+            : t('viewer.playback.idleHint'))}
+          {viewMode === 'scroll' && t('viewer.playback.scrollHint')}
+          {isFullscreen && t('viewer.playback.fullscreenHint')}
           {viewMode === 'columns' && (columnsLayout === 'vertical'
-            ? `세로 전체 뷰 • ${totalMeasures}마디 • 세로 스크롤로 탐색`
-            : `가로 컬럼 뷰 • ${totalMeasures}마디 (${numColumns}컬럼, ${localMeasuresPerColumn}마디/컬럼) • 가로 스크롤로 탐색`)}
+            ? t('viewer.playback.verticalView', { measures: totalMeasures })
+            : t('viewer.playback.columnView', { measures: totalMeasures, columns: numColumns, measuresPerColumn: localMeasuresPerColumn }))}
         </span>
         <div className="flex items-center gap-2">
           {viewMode === 'playback' && isPlaying && keysoundReady && (pipelineLatency !== null || schedulingOverhead !== null) && (
             <span
               className="text-blue-400"
-              title={`파이프라인: baseLatency+outputLatency (AudioContext→스피커)\n스케줄링: playAudioSync 평균 처리 시간 (최근 100회)`}
+              title={t('viewer.playback.latencyTooltip')}
             >
               {pipelineLatency !== null ? pipelineLatency.toFixed(1) : '?'}
               {schedulingOverhead !== null ? ` + ${schedulingOverhead.toFixed(2)}` : ''}ms
