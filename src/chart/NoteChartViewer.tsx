@@ -32,6 +32,8 @@ import { useViewerPlayback } from './viewer/hooks/useViewerPlayback';
 // EqualizerBand/EqualizerSettings/EffectorSettings 는 useKeysoundLifecycle 에서 export 됨
 import type { EqualizerBand, EqualizerSettings, EffectorSettings } from './viewer/hooks/useKeysoundLifecycle';
 import { useKeysoundTrigger } from './viewer/hooks/useKeysoundTrigger';
+import { NumberInputWithPresets } from './viewer/NumberInputWithPresets';
+import { applyLaneOption } from './viewer/laneUtils';
 // ── Renderer sub-modules (Stage E extraction) ─────────────────────────────────
 import {
   NOTE_HEIGHT,
@@ -144,136 +146,8 @@ export const DEFAULT_TIMING_MARKER_SETTINGS: TimingMarkerSettings = {
   },
 };
 
-/** 레인 옵션 */
-export type LaneOption = 'normal' | 'mirror' | 'random' | 'r-random' | 's-random';
-
-/** 숫자 입력 컴포넌트 (프리셋 버튼 + 직접 입력) */
-interface NumberInputWithPresetsProps {
-  value: number;
-  onChange: (value: number) => void;
-  presets: readonly number[];
-  min: number;
-  max: number;
-  step?: number;
-  label?: string;
-  suffix?: string;
-  prefix?: string;
-  activeColor?: string;
-  allowDecimal?: boolean;
-  inputWidth?: string;
-}
-
-const NumberInputWithPresets = React.memo(function NumberInputWithPresets({
-  value,
-  onChange,
-  presets,
-  min,
-  max,
-  step = 0.01,
-  suffix = '',
-  prefix = '',
-  activeColor = 'bg-cyan-500/20 text-cyan-400',
-  allowDecimal = true,
-  inputWidth = 'w-16',
-}: NumberInputWithPresetsProps) {
-  const { t } = useI18n();
-  const [inputValue, setInputValue] = useState(String(value));
-  const [isFocused, setIsFocused] = useState(false);
-
-  // 외부 value가 변경되면 input 값 동기화
-  useEffect(() => {
-    if (!isFocused) {
-      setInputValue(String(value));
-    }
-  }, [value, isFocused]);
-
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const newValue = e.target.value;
-    // 숫자, 소수점, 마이너스만 허용
-    if (allowDecimal) {
-      if (/^-?\d*\.?\d*$/.test(newValue)) {
-        setInputValue(newValue);
-      }
-    } else {
-      if (/^-?\d*$/.test(newValue)) {
-        setInputValue(newValue);
-      }
-    }
-  }, [allowDecimal]);
-
-  const handleInputBlur = useCallback(() => {
-    setIsFocused(false);
-    let parsed = parseFloat(inputValue);
-    if (isNaN(parsed)) {
-      parsed = value;
-    }
-    // 범위 제한
-    const clamped = Math.max(min, Math.min(max, parsed));
-    // step에 맞게 반올림
-    const stepped = Math.round(clamped / step) * step;
-    // 소수점 정리
-    const final = allowDecimal ? parseFloat(stepped.toFixed(10)) : Math.round(stepped);
-    setInputValue(String(final));
-    if (final !== value) {
-      onChange(final);
-    }
-  }, [inputValue, value, min, max, step, allowDecimal, onChange]);
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      (e.target as HTMLInputElement).blur();
-    } else if (e.key === 'Escape') {
-      setInputValue(String(value));
-      (e.target as HTMLInputElement).blur();
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      const newVal = Math.min(max, value + step);
-      const final = allowDecimal ? parseFloat(newVal.toFixed(10)) : Math.round(newVal);
-      onChange(final);
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      const newVal = Math.max(min, value - step);
-      const final = allowDecimal ? parseFloat(newVal.toFixed(10)) : Math.round(newVal);
-      onChange(final);
-    }
-  }, [value, min, max, step, allowDecimal, onChange]);
-
-  const isPresetValue = presets.includes(value as typeof presets[number]);
-
-  return (
-    <div className="flex items-center gap-1">
-      {presets.map(preset => (
-        <button
-          key={preset}
-          onClick={() => onChange(preset)}
-          className={cn(
-            "px-2 py-1 rounded text-xs transition-colors",
-            value === preset ? activeColor : "bg-muted/50 text-muted-foreground hover:bg-muted"
-          )}
-        >
-          {prefix}{preset}{suffix}
-        </button>
-      ))}
-      <input
-        type="text"
-        value={isFocused ? inputValue : `${value}`}
-        onChange={handleInputChange}
-        onFocus={() => setIsFocused(true)}
-        onBlur={handleInputBlur}
-        onKeyDown={handleKeyDown}
-        className={cn(
-          inputWidth,
-          "px-2 py-1 rounded text-xs text-center transition-colors border",
-          !isPresetValue && !isFocused
-            ? activeColor + " border-current"
-            : "bg-muted/50 text-muted-foreground border-transparent hover:border-muted-foreground/30",
-          isFocused && "border-cyan-500 bg-background"
-        )}
-        title={t('viewer.numberInput.manualEntryTitle', { min, max })}
-      />
-    </div>
-  );
-});
+// LaneOption type re-exported for back-compat (extracted to viewer/laneUtils.ts in Stage G)
+export type { LaneOption } from './viewer/laneUtils';
 
 /** 재생 속도 옵션 */
 export const PLAYBACK_SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2] as const;
@@ -343,57 +217,6 @@ const DEFAULT_NOTE_TYPE_FILTER: NoteTypeFilter = {
   bgm: true,        // BGM enabled by default
 };
 
-/** 레인 옵션 적용 */
-function applyLaneOption(lanes: LaneConfig[], option: LaneOption, seed?: number): LaneConfig[] {
-  if (option === 'normal') return lanes;
-
-  // 스크래치/FZ 레인 분리 (playableLanes만 셔플)
-  const playableLanes = lanes.filter(l => !l.isScratch && !l.isBgm && l.id !== 'FZ' && l.id !== 'FZ2');
-
-  let arrangedLanes: LaneConfig[];
-
-  switch (option) {
-    case 'mirror':
-      arrangedLanes = [...playableLanes].reverse();
-      break;
-    case 'random':
-    case 'r-random':
-    case 's-random': {
-      // Fisher-Yates shuffle
-      const shuffled = [...playableLanes];
-      const rng = seed ? mulberry32(seed) : Math.random;
-      for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = Math.floor(rng() * (i + 1));
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-      }
-      arrangedLanes = shuffled;
-      break;
-    }
-    default:
-      arrangedLanes = playableLanes;
-  }
-
-  // 원래 위치에 스크래치 레인 복원
-  const result: LaneConfig[] = [];
-  let playableIndex = 0;
-
-  for (const original of lanes) {
-    if (original.isScratch || original.isBgm || original.id === 'FZ' || original.id === 'FZ2') {
-      result.push(original);
-    } else {
-      const arranged = arrangedLanes[playableIndex++];
-      result.push({ ...arranged, x: original.x });
-    }
-  }
-
-  // x 좌표 재계산
-  let x = 0;
-  return result.map(lane => {
-    const updated = { ...lane, x };
-    x += lane.width;
-    return updated;
-  });
-}
 
 // Renderer implementations → viewer/renderers/ (Stage E extraction)
 
@@ -1234,7 +1057,7 @@ export function NoteChartViewer({
         <div className="px-3 py-2 border-b bg-muted/20 space-y-3">
           {/* Note Type Filters */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-muted-foreground w-16">표시:</span>
+            <span className="text-xs text-muted-foreground w-16">{t('viewer.settings.display')}</span>
             <button
               onClick={() => setLocalNoteFilter(f => ({ ...f, playable: !f.playable }))}
               className={cn("flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors", localNoteFilter.playable ? "bg-blue-500/20 text-blue-400" : "bg-muted/50 text-muted-foreground")}
@@ -1263,7 +1086,7 @@ export function NoteChartViewer({
 
           {/* Lane Options */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-muted-foreground w-16">레인:</span>
+            <span className="text-xs text-muted-foreground w-16">{t('viewer.settings.lane')}</span>
             {(['normal', 'mirror', 'random'] as const).map(opt => (
               <button
                 key={opt}
@@ -1293,7 +1116,7 @@ export function NoteChartViewer({
 
           {/* Width (px) */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-muted-foreground w-16">가로 크기:</span>
+            <span className="text-xs text-muted-foreground w-16">{t('viewer.settings.width')}</span>
             <NumberInputWithPresets
               value={chartWidthOverride ?? baseChartWidth}
               onChange={handleChartWidthChange}
@@ -1329,7 +1152,7 @@ export function NoteChartViewer({
 
           {/* Height (px) */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-muted-foreground w-16">세로 크기:</span>
+            <span className="text-xs text-muted-foreground w-16">{t('viewer.settings.height')}</span>
             <NumberInputWithPresets
               value={chartHeightOverride ?? height}
               onChange={handleChartHeightChange}
@@ -1355,7 +1178,7 @@ export function NoteChartViewer({
           {/* Measures per Column (컬럼 뷰 전용) */}
           {viewMode === 'columns' && (
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-muted-foreground w-16">마디/컬럼:</span>
+            <span className="text-xs text-muted-foreground w-16">{t('viewer.settings.measuresPerColumn')}</span>
             <NumberInputWithPresets
               value={localMeasuresPerColumn}
               onChange={setLocalMeasuresPerColumn}
@@ -1372,7 +1195,7 @@ export function NoteChartViewer({
           {/* Columns Layout (컬럼 뷰 전용) */}
           {viewMode === 'columns' && (
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-muted-foreground w-16">레이아웃:</span>
+            <span className="text-xs text-muted-foreground w-16">{t('viewer.settings.layout')}</span>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => { setColumnsLayout('horizontal'); setVerticalScrollY(0); }}
@@ -1392,7 +1215,7 @@ export function NoteChartViewer({
 
           {/* Grid Division (그리드 간격) */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-muted-foreground w-16">그리드:</span>
+            <span className="text-xs text-muted-foreground w-16">{t('viewer.settings.grid')}</span>
             <NumberInputWithPresets
               value={gridDivision}
               onChange={setGridDivision}
@@ -1410,7 +1233,7 @@ export function NoteChartViewer({
           {/* Scroll Speed - scroll 뷰 전용 */}
           {viewMode === 'scroll' && (
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-muted-foreground w-16">스크롤:</span>
+              <span className="text-xs text-muted-foreground w-16">{t('viewer.settings.scroll')}</span>
               <NumberInputWithPresets
                 value={scrollSpeed}
                 onChange={setScrollSpeed}
@@ -1428,7 +1251,7 @@ export function NoteChartViewer({
           {/* Minimap Toggle - scroll/playback 뷰 전용 */}
           {(viewMode === 'scroll' || viewMode === 'playback') && (
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-muted-foreground w-16">미니맵:</span>
+              <span className="text-xs text-muted-foreground w-16">{t('viewer.settings.minimap')}</span>
               <button
                 onClick={() => setShowMinimap(!showMinimap)}
                 className={cn("flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors", showMinimap ? "bg-green-500/20 text-green-400" : "bg-muted/50 text-muted-foreground")}
@@ -1443,7 +1266,7 @@ export function NoteChartViewer({
           {/* 스크롤 너비 스케일링 - scroll/playback 뷰 전용 */}
           {(viewMode === 'scroll' || viewMode === 'playback') && (
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-muted-foreground w-16">너비변화:</span>
+              <span className="text-xs text-muted-foreground w-16">{t('viewer.settings.widthChange')}</span>
               <button
                 onClick={() => setScaleWidthByScroll(!scaleWidthByScroll)}
                 className={cn("flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors", scaleWidthByScroll ? "bg-purple-500/20 text-purple-400" : "bg-muted/50 text-muted-foreground")}
@@ -1458,7 +1281,7 @@ export function NoteChartViewer({
           {/* Playback Speed - playback 모드 전용 */}
           {viewMode === 'playback' && (
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-muted-foreground w-16">속도:</span>
+              <span className="text-xs text-muted-foreground w-16">{t('viewer.settings.speed')}</span>
               <NumberInputWithPresets
                 value={playbackSpeed}
                 onChange={(speed) => {
@@ -1478,7 +1301,7 @@ export function NoteChartViewer({
           {/* Keysound Volume & Audio Settings - playback 모드 전용 */}
           {viewMode === 'playback' && keysounds && Object.keys(keysounds).length > 0 && (
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-muted-foreground w-16">키음량:</span>
+              <span className="text-xs text-muted-foreground w-16">{t('viewer.settings.keysoundVolume')}</span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setKeysoundMuted(!keysoundMuted)}
@@ -1516,7 +1339,7 @@ export function NoteChartViewer({
 
           {/* 타이밍 마커 설정 (BPM/STOP/SCROLL) */}
           <div className="border-t border-muted/30 pt-3 mt-1">
-            <div className="text-xs text-muted-foreground mb-2 font-medium">타이밍 마커</div>
+            <div className="text-xs text-muted-foreground mb-2 font-medium">{t('viewer.settings.timingMarkerHeading')}</div>
 
             {/* BPM 마커 설정 */}
             <div className="flex items-center gap-2 flex-wrap mb-2">
@@ -1826,7 +1649,7 @@ export function NoteChartViewer({
         <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
           <div className="text-center text-white">
             <div className="text-lg font-bold mb-2">WebGL 컨텍스트 손실</div>
-            <div className="text-sm text-gray-300">그래픽 리소스 복구 중입니다...</div>
+            <div className="text-sm text-gray-300">{t('viewer.settings.resourceRecovering')}</div>
           </div>
         </div>
       )}
