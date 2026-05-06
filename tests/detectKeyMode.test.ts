@@ -79,16 +79,34 @@ describe('detectKeyMode', () => {
     expect(detectKeyMode(notes)).toBe('7K');
   });
 
-  it('should detect 7K for SC + columns including 6/7 (without #6K header)', () => {
+  it('should detect 6K (에리팩) for SC + 1,2,3,5,6,7 without col 4 (no header needed)', () => {
+    // SC+1,2,3,5,6,7+FZ with col 4 absent = 에리팩 스타일 6K — detectable without header
     const notes = makeNotes(['SC', '1', '2', '3', '5', '6', '7']);
-    // Without #6K header, SC + columns 6/7 used → 7K
-    expect(detectKeyMode(notes)).toBe('7K');
+    expect(detectKeyMode(notes)).toBe('6K');
   });
 
   it('should detect 6K for SC + 6 key columns with #6K header', () => {
     const notes = makeNotes(['SC', '1', '2', '3', '5', '6', '7']);
     const headers = makeHeaders({ '6K': '1', '6k': '1' });
     expect(detectKeyMode(notes, headers)).toBe('6K');
+  });
+
+  it('should detect 7K for SC + columns 6/7 when col 4 is also present', () => {
+    // col 4 present → not 에리팩 → 7K
+    const notes = makeNotes(['SC', '1', '2', '3', '4', '5', '6', '7']);
+    expect(detectKeyMode(notes)).toBe('7K');
+  });
+
+  it('should detect 4K (유이팩) for SC + 1,2,4,5 without col 3 (no header needed)', () => {
+    // SC+1,2,4,5+FZ with col 3 absent = 유이팩 스타일 4K — detectable without header
+    const notes = makeNotes(['SC', '1', '2', '4', '5']);
+    expect(detectKeyMode(notes)).toBe('4K');
+  });
+
+  it('should detect 5K for SC + 1,2,3,4,5 (standard 5K, not 유이팩)', () => {
+    // col 3 present → not 유이팩 → 5K
+    const notes = makeNotes(['SC', '1', '2', '3', '4', '5']);
+    expect(detectKeyMode(notes)).toBe('5K');
   });
 
   // =============================================

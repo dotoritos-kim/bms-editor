@@ -7,6 +7,7 @@
 
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { cn } from '../../utils';
+import { useI18n } from '../../i18n';
 import type { EditableBMSNote } from '@rhythm-archive/bms-core';
 
 // 레인 색상 (column id → color). 에디터 laneConfig와 동일한 팔레트.
@@ -77,6 +78,7 @@ export const Minimap = React.memo(function Minimap({
   bookmarks,
   hideHeader,
 }: MinimapProps) {
+  const { t } = useI18n();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 120, h: 192 });
@@ -338,7 +340,7 @@ export const Minimap = React.memo(function Minimap({
     <div className={cn('flex flex-col h-full', className)}>
       {!hideHeader && (
         <div className="px-2 py-1 text-xs font-semibold text-zinc-400 uppercase tracking-wider border-b border-zinc-800 shrink-0">
-          Minimap
+          {t('panels.minimap.title')}
         </div>
       )}
       <div ref={containerRef} className="flex-1 min-h-0 overflow-hidden">
@@ -349,7 +351,7 @@ export const Minimap = React.memo(function Minimap({
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerLeave={handlePointerUp}
-          title="클릭/드래그하여 이동"
+          title={t('panels.minimap.navigationTooltip')}
         />
       </div>
     </div>

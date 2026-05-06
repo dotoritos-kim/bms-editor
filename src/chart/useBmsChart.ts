@@ -201,11 +201,20 @@ export function detectKeyMode(notes: BMSNote[], headers?: { get: (key: string) =
   // SP (Single Play) modes
   // ============================================
 
-  // IIDX SP 스타일 (SC/FZ 사용):
-  // IIDX에서 컬럼 6,7은 채널 18,19에서 매핑되므로 이 컬럼이 사용되면 반드시 7K
-  // 그렇지 않으면 5K (표준 beatmania 5키 모드)
+  // IIDX SP 스타일 (SC/FZ 사용)
   if (hasIIDXSpecialLanes) {
-    if (usedColumns.has('6') || usedColumns.has('7')) return '7K';
+    const numericKeys = ['1','2','3','4','5','6','7'].filter(c => usedColumns.has(c));
+
+    if (usedColumns.has('6') || usedColumns.has('7')) {
+      // 에리팩 스타일 6K: SC+1,2,3,5,6,7+FZ (컬럼 4 없음, 6개 숫자 키)
+      if (!usedColumns.has('4') && numericKeys.length === 6) return '6K';
+      return '7K';
+    }
+
+    // 유이팩 스타일 4K: SC+1,2,4,5+FZ (컬럼 3 없음, 4개 숫자 키)
+    if (!usedColumns.has('3') && usedColumns.has('4') && usedColumns.has('5') && numericKeys.length === 4) return '4K';
+
+    // 표준 5K: SC+1-5+FZ
     return '5K';
   }
 
