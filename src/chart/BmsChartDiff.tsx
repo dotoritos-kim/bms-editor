@@ -11,6 +11,7 @@ import { NoteChartViewer, KEY_MODE_DISPLAY } from './NoteChartViewer';
 import type { KeyMode } from './NoteChartViewer';
 import type { BMSNote } from '@rhythm-archive/bms-core';
 import { cn } from '../utils';
+import { useI18n } from '../i18n';
 
 export interface ChartInfo {
   notes: BMSNote[];
@@ -144,6 +145,7 @@ export function BmsChartDiff({
   className,
   viewerHeight,
 }: BmsChartDiffProps) {
+  const { t } = useI18n();
   const [viewMode, setViewMode] = useState<'unified' | 'split'>('unified');
   const [showChangesOnly, setShowChangesOnly] = useState(false);
   const [currentChangeIndex, setCurrentChangeIndex] = useState(0);
@@ -290,12 +292,12 @@ export function BmsChartDiff({
       <div
         className={cn('rounded-lg border border-zinc-800 bg-[#1a1a2e]', className)}
         role="region"
-        aria-label="변경사항 비교"
+        aria-label={t('diff.ariaLabel')}
       >
         <div className="flex flex-col items-center justify-center py-20 text-zinc-400">
           <Check className="w-12 h-12 mb-4 text-green-500" />
-          <p className="text-lg font-medium text-zinc-200">변경사항 없음</p>
-          <p className="text-sm mt-1">원본과 동일합니다</p>
+          <p className="text-lg font-medium text-zinc-200">{t('diff.noChanges.title')}</p>
+          <p className="text-sm mt-1">{t('diff.noChanges.detail')}</p>
         </div>
       </div>
     );
@@ -306,7 +308,7 @@ export function BmsChartDiff({
       className={cn('rounded-lg border border-zinc-800 bg-[#1a1a2e] flex flex-col', className)}
       role="dialog"
       aria-modal="true"
-      aria-label="변경사항 비교"
+      aria-label={t('diff.ariaLabel')}
     >
       {/* ===== TOP BAR ===== */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-zinc-800 flex-shrink-0">
@@ -338,7 +340,7 @@ export function BmsChartDiff({
             {noteDiff.removed.length > 0 && <span className="text-red-400">-{noteDiff.removed.length}</span>}
             {noteDiff.modified.length > 0 && <span className="text-yellow-400">~{noteDiff.modified.length}</span>}
             <span className="text-zinc-500">
-              ({measureChanges.length}개 마디)
+              {t('diff.measureCount', { count: measureChanges.length })}
             </span>
           </div>
         </div>
@@ -361,8 +363,8 @@ export function BmsChartDiff({
               onClick={goToPrevChange}
               disabled={currentChangeIndex <= 0}
               className="p-1 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed text-zinc-400"
-              title="이전 변경 (F7)"
-              aria-label="이전 변경"
+              title={t('diff.nav.prevTooltip')}
+              aria-label={t('diff.nav.prev')}
             >
               <ChevronUp className="w-4 h-4" />
             </button>
@@ -373,8 +375,8 @@ export function BmsChartDiff({
               onClick={goToNextChange}
               disabled={currentChangeIndex >= measureChanges.length - 1}
               className="p-1 rounded hover:bg-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed text-zinc-400"
-              title="다음 변경 (F8)"
-              aria-label="다음 변경"
+              title={t('diff.nav.nextTooltip')}
+              aria-label={t('diff.nav.next')}
             >
               <ChevronDown className="w-4 h-4" />
             </button>
@@ -390,15 +392,15 @@ export function BmsChartDiff({
               'flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors',
               showChangesOnly ? 'bg-blue-600/20 text-blue-400' : 'text-zinc-400 hover:bg-zinc-700'
             )}
-            title="변경만 보기"
+            title={t('diff.filter.changesOnlyTooltip')}
             aria-pressed={showChangesOnly}
           >
             {showChangesOnly ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-            변경만
+            {t('diff.filter.changesOnlyShort')}
           </button>
 
           {/* View mode tabs */}
-          <div className="flex rounded overflow-hidden border border-zinc-700" role="tablist" aria-label="보기 모드">
+          <div className="flex rounded overflow-hidden border border-zinc-700" role="tablist" aria-label={t('diff.viewModeAria')}>
             <button
               role="tab"
               aria-selected={viewMode === 'unified'}
@@ -459,7 +461,7 @@ export function BmsChartDiff({
             style={{ maxHeight: effectiveHeight }}
           >
             <div className="sticky top-0 bg-[#1a1a2e] border-b border-zinc-800 px-3 py-1.5 text-xs text-zinc-500 font-medium">
-              변경 위치
+              {t('diff.sidebar.heading')}
             </div>
             {measureChanges.map((mc, idx) => (
               <button
@@ -474,7 +476,7 @@ export function BmsChartDiff({
                 )}
                 aria-current={idx === currentChangeIndex ? 'true' : undefined}
               >
-                <span className="font-mono">마디 {mc.measure + 1}</span>
+                <span className="font-mono">{t('diff.sidebar.measureLabel', { measure: mc.measure + 1 })}</span>
                 <span className="flex items-center gap-1.5">
                   {mc.added > 0 && <span className="text-green-400">+{mc.added}</span>}
                   {mc.removed > 0 && <span className="text-red-400">-{mc.removed}</span>}
@@ -493,23 +495,23 @@ export function BmsChartDiff({
               {noteDiff.added.length > 0 && (
                 <span className="flex items-center gap-1.5">
                   <span className="w-3 h-2 rounded-sm bg-green-500 inline-block" />
-                  추가 ({noteDiff.added.length})
+                  {t('diff.legend.added', { count: noteDiff.added.length })}
                 </span>
               )}
               {noteDiff.removed.length > 0 && (
                 <span className="flex items-center gap-1.5">
                   <span className="w-3 h-2 rounded-sm bg-red-500 inline-block" />
-                  삭제 ({noteDiff.removed.length})
+                  {t('diff.legend.removed', { count: noteDiff.removed.length })}
                 </span>
               )}
               {noteDiff.modified.length > 0 && (
                 <span className="flex items-center gap-1.5">
                   <span className="w-3 h-2 rounded-sm bg-yellow-500 inline-block" />
-                  수정 ({noteDiff.modified.length})
+                  {t('diff.legend.modified', { count: noteDiff.modified.length })}
                 </span>
               )}
               {showChangesOnly && (
-                <span className="text-blue-400 ml-auto">미변경 노트 반투명 처리됨</span>
+                <span className="text-blue-400 ml-auto">{t('diff.legend.unchangedDimmed')}</span>
               )}
             </div>
           )}
@@ -548,7 +550,7 @@ export function BmsChartDiff({
                   />
                 ) : (
                   <div className="flex items-center justify-center text-zinc-500 text-sm" style={{ height: effectiveHeight - 28 }}>
-                    파일 없음
+                    {t('diff.empty.before')}
                   </div>
                 )}
               </div>
@@ -573,7 +575,7 @@ export function BmsChartDiff({
                   />
                 ) : (
                   <div className="flex items-center justify-center text-zinc-500 text-sm" style={{ height: effectiveHeight - 28 }}>
-                    파일 삭제됨
+                    {t('diff.empty.after')}
                   </div>
                 )}
               </div>

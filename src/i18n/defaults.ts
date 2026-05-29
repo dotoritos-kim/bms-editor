@@ -279,6 +279,61 @@ export const defaultMessages = {
     parseFailed: 'Failed to parse BMS chart: {{error}}',
     keyModeFailed: 'Failed to detect key mode',
   },
+  diff: {
+    ariaLabel: 'Diff comparison',
+    noChanges: {
+      title: 'No changes',
+      detail: 'Identical to the original',
+    },
+    measureCount: '({{count}} measures)',
+    measureCount_one: '({{count}} measure)',
+    nav: {
+      prev: 'Previous change',
+      prevTooltip: 'Previous change (F7)',
+      next: 'Next change',
+      nextTooltip: 'Next change (F8)',
+    },
+    filter: {
+      changesOnlyTooltip: 'Show only changes',
+      changesOnlyShort: 'Changes only',
+    },
+    viewModeAria: 'View mode',
+    sidebar: {
+      heading: 'Change locations',
+      measureLabel: 'Measure {{measure}}',
+    },
+    legend: {
+      added: 'Added ({{count}})',
+      removed: 'Removed ({{count}})',
+      modified: 'Modified ({{count}})',
+      unchangedDimmed: 'Unchanged notes are dimmed',
+    },
+    empty: {
+      before: 'No file',
+      after: 'File deleted',
+    },
+  },
+  layers: {
+    panelTitle: 'Layers',
+  },
+  noteChart: {
+    measureUnit: 'measure',
+    measureProgress: '{{current}}/{{total}} measures',
+    settings: {
+      resetLabel: '(reset)',
+      lanePerBeatHint: '(lines per beat)',
+      dragSensitivityHint: '(drag sensitivity)',
+      clickToSeekHint: '(click to seek to position)',
+      noteWidthHint: '(note width by scroll speed)',
+    },
+    layout: {
+      horizontalColumns: 'Horizontal columns',
+      verticalSingle: 'Vertical single',
+    },
+    error: {
+      webglLost: 'WebGL context lost',
+    },
+  },
 } as const;
 
 export type BmsEditorMessages = typeof defaultMessages;

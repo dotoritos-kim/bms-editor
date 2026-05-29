@@ -169,7 +169,7 @@ export function Minimap({
         title={t('viewer.timeline.clickToSeek')}
       />
       <div className="text-xs text-center py-1 px-2 bg-muted/50 border-t text-muted-foreground">
-        {Math.floor(currentBeat / 4)}/{Math.floor(maxBeat / 4)} 마디
+        {t('noteChart.measureProgress', { current: Math.floor(currentBeat / 4), total: Math.floor(maxBeat / 4) })}
       </div>
     </div>
   );

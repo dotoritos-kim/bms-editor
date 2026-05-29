@@ -38,9 +38,9 @@ import {
 const KEY_MODE_OPTIONS: KeyMode[] = ['4K', '5K', '6K', '7K', '8K', '9K', '10K', '12K', '14K', '18K', '24K', '48K'];
 
 const KEY_MODE_LABELS: Record<KeyMode, string> = {
-  '4K':  '4K (유이팩: SC+1,2,4,5+FZ)',
+  '4K':  '4K (Yuipack: SC+1,2,4,5+FZ)',
   '5K':  '5K (SC+1-5+FZ)',
-  '6K':  '6K (에리팩: SC+1,2,3,5,6,7+FZ)',
+  '6K':  '6K (Eripack: SC+1,2,3,5,6,7+FZ)',
   '7K':  '7K (SC+1-7+FZ)',
   '8K':  '8K',
   '9K':  '9K (PMS)',

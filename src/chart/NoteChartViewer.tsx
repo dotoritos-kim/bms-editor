@@ -997,7 +997,7 @@ export function NoteChartViewer({
               <span className="text-muted-foreground">/</span>
               <span className="font-mono text-muted-foreground">{formatTime(totalDuration)}</span>
               <span className="text-muted-foreground ml-1">|</span>
-              <span className="text-muted-foreground ml-1">{Math.floor(playbackBeat / 4) + 1}/{Math.floor(maxBeat / 4)} 마디</span>
+              <span className="text-muted-foreground ml-1">{t('noteChart.measureProgress', { current: Math.floor(playbackBeat / 4) + 1, total: Math.floor(maxBeat / 4) })}</span>
             </div>
             {audioUrl && (
               <span
@@ -1134,7 +1134,7 @@ export function NoteChartViewer({
                 className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                 title={t('viewer.timing.resetToDefault')}
               >
-                (리셋)
+                {t('noteChart.settings.resetLabel')}
               </button>
             )}
             {/* 비율 고정 토글 */}
@@ -1170,7 +1170,7 @@ export function NoteChartViewer({
                 className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                 title={t('viewer.timing.resetToDefault')}
               >
-                (리셋)
+                {t('noteChart.settings.resetLabel')}
               </button>
             )}
           </div>
@@ -1201,13 +1201,13 @@ export function NoteChartViewer({
                 onClick={() => { setColumnsLayout('horizontal'); setVerticalScrollY(0); }}
                 className={cn("flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors", columnsLayout === 'horizontal' ? "bg-indigo-500/20 text-indigo-400" : "bg-muted/50 text-muted-foreground")}
               >
-                <LayoutGrid className="h-3 w-3" /> 가로 컬럼
+                <LayoutGrid className="h-3 w-3" /> {t('noteChart.layout.horizontalColumns')}
               </button>
               <button
                 onClick={() => { setColumnsLayout('vertical'); setVerticalScrollY(0); }}
                 className={cn("flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors", columnsLayout === 'vertical' ? "bg-indigo-500/20 text-indigo-400" : "bg-muted/50 text-muted-foreground")}
               >
-                <Rows3 className="h-3 w-3" /> 세로 1줄
+                <Rows3 className="h-3 w-3" /> {t('noteChart.layout.verticalSingle')}
               </button>
             </div>
           </div>
@@ -1227,7 +1227,7 @@ export function NoteChartViewer({
               allowDecimal={false}
               activeColor="bg-teal-500/20 text-teal-400"
             />
-            <span className="text-xs text-muted-foreground ml-2">(비트당 라인)</span>
+            <span className="text-xs text-muted-foreground ml-2">{t('noteChart.settings.lanePerBeatHint')}</span>
           </div>
 
           {/* Scroll Speed - scroll 뷰 전용 */}
@@ -1244,7 +1244,7 @@ export function NoteChartViewer({
                 suffix="x"
                 activeColor="bg-amber-500/20 text-amber-400"
               />
-              <span className="text-xs text-muted-foreground ml-2">(드래그 민감도)</span>
+              <span className="text-xs text-muted-foreground ml-2">{t('noteChart.settings.dragSensitivityHint')}</span>
             </div>
           )}
 
@@ -1259,7 +1259,7 @@ export function NoteChartViewer({
                 <MapIcon className="h-3 w-3" />
                 {showMinimap ? "ON" : "OFF"}
               </button>
-              <span className="text-xs text-muted-foreground ml-2">(클릭하여 해당 위치로 이동)</span>
+              <span className="text-xs text-muted-foreground ml-2">{t('noteChart.settings.clickToSeekHint')}</span>
             </div>
           )}
 
@@ -1274,7 +1274,7 @@ export function NoteChartViewer({
                 <ZoomIn className="h-3 w-3" />
                 {scaleWidthByScroll ? "ON" : "OFF"}
               </button>
-              <span className="text-xs text-muted-foreground ml-2">(스크롤 속도에 따른 노트 너비)</span>
+              <span className="text-xs text-muted-foreground ml-2">{t('noteChart.settings.noteWidthHint')}</span>
             </div>
           )}
 
@@ -1648,7 +1648,7 @@ export function NoteChartViewer({
       {webglContextLost && (
         <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
           <div className="text-center text-white">
-            <div className="text-lg font-bold mb-2">WebGL 컨텍스트 손실</div>
+            <div className="text-lg font-bold mb-2">{t('noteChart.error.webglLost')}</div>
             <div className="text-sm text-gray-300">{t('viewer.settings.resourceRecovering')}</div>
           </div>
         </div>

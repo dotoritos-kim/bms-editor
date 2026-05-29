@@ -126,15 +126,15 @@ const PLAYER_OPTIONS: SelectOption[] = [
 ];
 
 const HEADER_FIELDS: HeaderField[] = [
-  { key: 'title',      label: '제목',       type: 'text',   placeholder: 'Title' },
-  { key: 'subtitle',   label: '부제목',     type: 'text',   placeholder: 'Subtitle' },
-  { key: 'artist',     label: '아티스트',   type: 'text',   placeholder: 'Artist' },
-  { key: 'subartist',  label: '부 아티스트', type: 'text',  placeholder: 'Subartist' },
-  { key: 'genre',      label: '장르',       type: 'text',   placeholder: 'Genre' },
+  { key: 'title',      label: 'Title',      type: 'text',   placeholder: 'Title' },
+  { key: 'subtitle',   label: 'Subtitle',   type: 'text',   placeholder: 'Subtitle' },
+  { key: 'artist',     label: 'Artist',     type: 'text',   placeholder: 'Artist' },
+  { key: 'subartist',  label: 'Sub-artist', type: 'text',   placeholder: 'Subartist' },
+  { key: 'genre',      label: 'Genre',      type: 'text',   placeholder: 'Genre' },
   { key: 'bpm',        label: 'BPM',        type: 'number', placeholder: '130' },
-  { key: 'playlevel',  label: '레벨',       type: 'number', placeholder: '1' },
-  { key: 'difficulty', label: '난이도',     type: 'select', options: DIFFICULTY_OPTIONS },
-  { key: 'rank',       label: '판정',       type: 'select', options: RANK_OPTIONS },
+  { key: 'playlevel',  label: 'Level',      type: 'number', placeholder: '1' },
+  { key: 'difficulty', label: 'Difficulty', type: 'select', options: DIFFICULTY_OPTIONS },
+  { key: 'rank',       label: 'Rank',       type: 'select', options: RANK_OPTIONS },
   { key: 'total',      label: 'Total',      type: 'number', placeholder: '300' },
   { key: 'player',     label: 'Player',     type: 'select', options: PLAYER_OPTIONS },
   { key: 'stagefile',  label: 'Stage File', type: 'text',   placeholder: 'stagefile.bmp', filePicker: true },
