@@ -1,8 +1,8 @@
 /**
  * Minimap
  *
- * 에디터 미니맵 컴포넌트
- * 2D Canvas 기반 — 레인 기반 노트 배치, 뷰포트 인디케이터, 드래그 스크롤
+ * Editor minimap component.
+ * 2D Canvas-based — lane-based note layout, viewport indicator, drag-to-scroll.
  */
 
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
@@ -10,7 +10,7 @@ import { cn } from '../../utils';
 import { useI18n } from '../../i18n';
 import type { EditableBMSNote } from '@rhythm-archive/bms-core';
 
-// 레인 색상 (column id → color). 에디터 laneConfig와 동일한 팔레트.
+// Lane colors (column id → color). Same palette as the editor laneConfig.
 const LANE_COLORS: Record<string, string> = {
   SC: '#ff3366',
   '1': '#ffffff',

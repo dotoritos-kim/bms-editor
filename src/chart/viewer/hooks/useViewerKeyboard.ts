@@ -1,8 +1,8 @@
 /**
- * useViewerKeyboard — NoteChartViewer 키보드 단축키 훅
+ * useViewerKeyboard — NoteChartViewer keyboard shortcut hook
  *
- * NoteChartViewer.tsx 에서 추출된 키보드 단축키 로직.
- * isFocused 가 true 일 때만 단축키를 처리합니다.
+ * Keyboard shortcut logic extracted from NoteChartViewer.tsx.
+ * Shortcuts are only handled when isFocused is true.
  */
 import { useEffect, useRef } from 'react';
 import type { MutableRefObject } from 'react';
@@ -126,7 +126,7 @@ export function useViewerKeyboard({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-    // 의도적으로 deps 없음 — optsRef 로 최신 값을 참조하여 리스너 재등록 방지
+    // Intentionally no deps — optsRef always holds the latest values, preventing listener re-registration
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 }

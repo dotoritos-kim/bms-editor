@@ -1,21 +1,21 @@
 /**
- * useViewerScroll — 스크롤/드래그/모멘텀/터치/휠 이벤트 핸들러 훅
+ * useViewerScroll — scroll/drag/momentum/touch/wheel event handler hook
  *
- * NoteChartViewer.tsx 에서 추출된 스크롤 인터랙션 로직.
- * containerRef 에 touch/wheel 이벤트를 등록하고 cleanup 합니다.
+ * Scroll interaction logic extracted from NoteChartViewer.tsx.
+ * Registers touch/wheel events on containerRef and cleans them up on unmount.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 
 export interface UseViewerScrollOptions {
   containerRef: RefObject<HTMLElement | null>;
-  /** viewMode — 훅 내부 ref로 추적, 렌더마다 최신값 전달 */
+  /** viewMode — tracked via an internal ref; pass the latest value on every render */
   viewMode: string;
   initialScrollBeat?: number;
   scrollToBeat?: number;
 }
 
-/** 훅 외부에서 업데이트해야 하는 스크롤 설정 ref */
+/** Scroll config ref that must be updated from outside the hook */
 export interface ScrollConfigRef {
   maxBeat: number;
   effectiveBeatScale: number;
@@ -31,7 +31,7 @@ export interface UseViewerScrollReturn {
   handleMouseDown: (e: React.MouseEvent) => void;
   handleMouseMove: (e: React.MouseEvent) => void;
   handleMouseUp: () => void;
-  /** 외부에서 maxBeat/effectiveBeatScale/scrollSpeed 를 직접 주입하는 ref */
+  /** Ref into which maxBeat/effectiveBeatScale/scrollSpeed are written directly from outside */
   scrollConfigRef: React.MutableRefObject<ScrollConfigRef>;
 }
 
@@ -43,14 +43,14 @@ export function useViewerScroll({
 }: UseViewerScrollOptions): UseViewerScrollReturn {
   const [scrollBeat, setScrollBeat] = useState(initialScrollBeat ?? 0);
 
-  // 외부에서 scrollToBeat가 변경되면 해당 위치로 이동
+  // Scroll to the new position when scrollToBeat changes from outside
   useEffect(() => {
     if (scrollToBeat !== undefined && scrollToBeat >= 0) {
       setScrollBeat(scrollToBeat);
     }
   }, [scrollToBeat]);
 
-  // maxBeat/effectiveBeatScale/scrollSpeed 는 외부(NoteChartViewer)에서 이 ref에 직접 기록
+  // maxBeat/effectiveBeatScale/scrollSpeed are written directly into this ref from outside (NoteChartViewer)
   const scrollConfigRef = useRef<ScrollConfigRef>({
     maxBeat: 100,
     effectiveBeatScale: 20,
@@ -65,7 +65,7 @@ export function useViewerScroll({
   const [lastY, setLastY] = useState(0);
   const momentumRef = useRef<number | null>(null);
 
-  // Stable refs (모두 closure-free native 핸들러에서 사용)
+  // Stable refs (all used in closure-free native handlers)
   const viewModeRef = useRef(viewMode);
   const scrollBeatRef = useRef(scrollBeat);
   const isDraggingRef = useRef(isDragging);
@@ -83,7 +83,7 @@ export function useViewerScroll({
   useEffect(() => { velocityRef.current = velocity; }, [velocity]);
 
   // -------------------------------------------------------------------------
-  // Momentum (scrollConfigRef.maxBeat 를 ref로 읽어 stale closure 방지)
+  // Momentum (reads scrollConfigRef.maxBeat via ref to prevent stale closure)
   // -------------------------------------------------------------------------
   const applyMomentum = useCallback(() => {
     if (Math.abs(velocityRef.current) < 0.01) { setVelocity(0); return; }

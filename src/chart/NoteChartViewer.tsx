@@ -1,18 +1,18 @@
 /**
  * NoteChartViewer Component (WebGL Version)
  *
- * BMS 노트 차트를 시각적으로 표시하는 컴포넌트
- * React Three Fiber를 사용하여 WebGL로 2D 렌더링합니다.
+ * Component that visually displays a BMS note chart.
+ * Uses React Three Fiber for WebGL 2D rendering.
  *
- * 노트 타입별 시각화:
- * - playable: 일반 노트 (밝은 색상)
- * - invisible: 고스트 노트 (점선 테두리, 반투명)
- * - landmine: 지뢰 노트 (빨간색 X 마크)
- * - bgm: BGM 자동 재생 노트 (회색 점선)
+ * Note type visualization:
+ * - playable: normal note (bright color)
+ * - invisible: ghost note (dashed border, semi-transparent)
+ * - landmine: landmine note (red X mark)
+ * - bgm: BGM auto-play note (gray dashed)
  */
 
 import React, { useRef, useEffect, useMemo, useState, useCallback, Suspense } from 'react';
-// flushSync 제거됨 - 성능 최적화 (메인 스레드 블로킹 방지)
+// flushSync removed - performance optimization (prevent main thread blocking)
 import { Canvas } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Play, Pause, Maximize2, Minimize2, GripVertical, Volume2, VolumeX, ZoomIn, ZoomOut, RotateCcw, Settings, Eye, Bomb, Music, Ghost, FlipHorizontal, SkipBack, SkipForward, Loader2, LayoutGrid, Rows3, Map as MapIcon, Link2, Link2Off } from 'lucide-react';
@@ -29,7 +29,7 @@ import { useViewerKeyboard } from './viewer/hooks/useViewerKeyboard';
 import { useViewerSettings } from './viewer/hooks/useViewerSettings';
 import { useViewerAudioSettings } from './viewer/hooks/useViewerAudioSettings';
 import { useViewerPlayback } from './viewer/hooks/useViewerPlayback';
-// EqualizerBand/EqualizerSettings/EffectorSettings 는 useKeysoundLifecycle 에서 export 됨
+// EqualizerBand/EqualizerSettings/EffectorSettings are exported from useKeysoundLifecycle
 import type { EqualizerBand, EqualizerSettings, EffectorSettings } from './viewer/hooks/useKeysoundLifecycle';
 import { useKeysoundTrigger } from './viewer/hooks/useKeysoundTrigger';
 import { NumberInputWithPresets } from './viewer/NumberInputWithPresets';
@@ -53,13 +53,13 @@ import {
   type HitEffect,
 } from './viewer/renderers';
 
-// 뷰 모드 타입
+// View mode type
 export type ViewMode = 'scroll' | 'playback' | 'columns';
 
-// 키 모드 타입
+// Key mode type
 export type KeyMode = '4K' | '5K' | '6K' | '7K' | '8K' | '9K' | '10K' | '12K' | '14K' | '18K' | '24K' | '48K';
 
-// 키 모드 표시 포맷 (스크래치 포함 여부)
+// Key mode display format (with/without scratch)
 export const KEY_MODE_DISPLAY: { [key in KeyMode]: string } = {
   '4K': '4K+SC',
   '5K': '5K+SC',
@@ -75,7 +75,7 @@ export const KEY_MODE_DISPLAY: { [key in KeyMode]: string } = {
   '48K': '48K (24K DP)',
 };
 
-// 노트 타입별 필터 옵션
+// Filter options per note type
 export interface NoteTypeFilter {
   playable: boolean;
   invisible: boolean;
@@ -83,25 +83,25 @@ export interface NoteTypeFilter {
   bgm: boolean;
 }
 
-/** BPM 변경 이벤트 */
+/** BPM change event */
 export interface BpmChange {
   beat: number;
   bpm: number;
 }
 
-/** STOP 이벤트 */
+/** STOP event */
 export interface StopEvent {
   beat: number;
   duration: number;
 }
 
-/** 스크롤 속도 변경 이벤트 */
+/** Scroll speed change event */
 export interface ScrollSpeedChange {
   beat: number;
   speed: number;
 }
 
-/** 개별 마커 타입 설정 */
+/** Per-marker type settings */
 export interface MarkerTypeSettings {
   visible: boolean;
   color: string;
@@ -111,14 +111,14 @@ export interface MarkerTypeSettings {
   showBackground: boolean;
 }
 
-/** 타이밍 마커 전체 설정 */
+/** Full timing marker settings */
 export interface TimingMarkerSettings {
   bpm: MarkerTypeSettings;
   stop: MarkerTypeSettings;
   scroll: MarkerTypeSettings;
 }
 
-/** 기본 타이밍 마커 설정 */
+/** Default timing marker settings */
 export const DEFAULT_TIMING_MARKER_SETTINGS: TimingMarkerSettings = {
   bpm: {
     visible: true,
@@ -149,16 +149,16 @@ export const DEFAULT_TIMING_MARKER_SETTINGS: TimingMarkerSettings = {
 // LaneOption type re-exported for back-compat (extracted to viewer/laneUtils.ts in Stage G)
 export type { LaneOption } from './viewer/laneUtils';
 
-/** 재생 속도 옵션 */
+/** Playback speed options */
 export const PLAYBACK_SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 
-/** 스크롤 속도 옵션 (음원 재생 속도와 분리) */
+/** Scroll speed options (independent of audio playback speed) */
 export const SCROLL_SPEEDS = [0.5, 1, 2, 4, 8, 16] as const;
 
-/** 그리드 간격 옵션 (비트당 라인 수) */
+/** Grid division options (lines per beat) */
 export const GRID_DIVISIONS = [1, 2, 4, 8, 16, 32, 48, 64, 96] as const;
 
-/** 컬럼 뷰 레이아웃 타입 */
+/** Columns view layout type */
 export type ColumnsLayout = 'horizontal' | 'vertical';
 
 export interface NoteChartViewerProps {
@@ -184,29 +184,29 @@ export interface NoteChartViewerProps {
   audioUrl?: string;
   judgmentLinePosition?: number;
   showTimingMarkers?: boolean;
-  /** 키사운드 매핑 (ID -> 파일명) */
+  /** Keysound mapping (ID -> filename) */
   keysounds?: Record<string, string>;
-  /** 키사운드 파일 기본 URL */
+  /** Base URL for keysound files */
   keysoundBaseUrl?: string;
-  /** 컬럼 뷰에서 한 컬럼당 마디 수 (기본: 4) */
+  /** Measures per column in columns view (default: 4) */
   measuresPerColumn?: number;
-  /** 컬럼 간 간격 (기본: 20) */
+  /** Gap between columns (default: 20) */
   columnGap?: number;
-  /** Positioning 객체 (스크롤 기믹 지원) */
+  /** Positioning object (scroll gimmick support) */
   positioning?: Positioning | null;
-  /** Timing 객체 (BPM 변화에 따른 시간-비트 변환) */
+  /** Timing object (time-to-beat conversion with BPM changes) */
   timing?: Timing | null;
-  /** 타이밍 마커 설정 (BPM/STOP/SCROLL 표시 옵션) */
+  /** Timing marker settings (BPM/STOP/SCROLL display options) */
   timingMarkerSettings?: TimingMarkerSettings;
-  /** 노트 높이 배율 (기본 1.0) */
+  /** Note height scale (default 1.0) */
   noteScale?: number;
-  /** 레인 너비 배율 (기본 1.0) */
+  /** Lane width scale (default 1.0) */
   laneWidthScale?: number;
-  /** 초기 스크롤 위치 (beat 단위) */
+  /** Initial scroll position (in beats) */
   initialScrollBeat?: number;
-  /** 외부에서 스크롤 위치를 변경할 때 사용 (변경 시 해당 beat로 이동) */
+  /** Used to change scroll position from outside (scrolls to this beat when changed) */
   scrollToBeat?: number;
-  /** unchanged 노트 불투명도 (0-1, diff 모드에서 변경되지 않은 노트 희미하게) */
+  /** Opacity for unchanged notes (0-1, dims unmodified notes in diff mode) */
   unchangedOpacity?: number;
 }
 
@@ -220,7 +220,7 @@ const DEFAULT_NOTE_TYPE_FILTER: NoteTypeFilter = {
 
 // Renderer implementations → viewer/renderers/ (Stage E extraction)
 
-/** 메인 컴포넌트 */
+/** Main component */
 export function NoteChartViewer({
   notes,
   keyMode = '7K',
@@ -260,10 +260,10 @@ export function NoteChartViewer({
   const { t } = useI18n();
   const containerRef = useRef<HTMLDivElement>(null);
   const outerContainerRef = useRef<HTMLDivElement>(null);
-  // audioRef, keysoundPlayerRef는 훅(useBgmAudio / useKeysoundLifecycle)에서 반환됨
-  // animationRef, playbackBeatRef, lastPlayedBeatRef, playedNotesRef는 useViewerPlayback에서 반환됨
+  // audioRef, keysoundPlayerRef are returned from hooks (useBgmAudio / useKeysoundLifecycle)
+  // animationRef, playbackBeatRef, lastPlayedBeatRef, playedNotesRef are returned from useViewerPlayback
   const notesRef = useRef(notes);
-  // 성능 최적화: 비트 순으로 정렬된 노트 배열 (이진 검색용)
+  // Performance optimization: notes array sorted by beat (for binary search)
   const sortedNotesRef = useRef<BMSNote[]>([]);
   const keysoundEnabledRef = useRef(showKeysounds);
   const keysoundReadyRef = useRef(false);
@@ -279,9 +279,9 @@ export function NoteChartViewer({
   const timingRef = useRef(timing);
 
   const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode);
-  // 스크롤/드래그/줌/모멘텀/터치/휠 — useViewerScroll 훅으로 위임
-  // maxBeat/effectiveBeatScale/scrollSpeed 는 아래에서 useMemo로 계산되지만,
-  // 훅 내부 ref 패턴 덕분에 초기 렌더 이후 자동 sync됨 (초기값은 임시값)
+  // Scroll/drag/zoom/momentum/touch/wheel — delegated to useViewerScroll hook
+  // maxBeat/effectiveBeatScale/scrollSpeed are computed with useMemo below,
+  // but auto-sync after initial render via the hook's internal ref pattern (initial values are placeholders)
   const {
     scrollBeat,
     setScrollBeat,
@@ -300,10 +300,10 @@ export function NoteChartViewer({
   });
 
   // isPlaying/playbackBeat/animationRef/playbackBeatRef/lastPlayedBeatRef/playedNotesRef
-  // 는 useViewerPlayback 훅에서 반환됨 (아래 keysound 이후에 호출됨)
-  // BGM/Fullscreen state는 maxBeat 선언 이후 훅 호출로 처리 (아래 참조)
+  // are returned from useViewerPlayback hook (called after keysound below)
+  // BGM/Fullscreen state is handled by hook calls after maxBeat declaration (see below)
 
-  // BMS 표시 설정 — useViewerSettings 훅으로 위임
+  // BMS display settings — delegated to useViewerSettings hook
   const {
     showSettings, setShowSettings,
     localNoteFilter, setLocalNoteFilter,
@@ -328,7 +328,7 @@ export function NoteChartViewer({
     initialTimingMarkerSettings,
   });
 
-  // 오디오 설정 — useViewerAudioSettings 훅으로 위임
+  // Audio settings — delegated to useViewerAudioSettings hook
   const {
     keysoundEnabled, setKeysoundEnabled,
     keysoundVolume, setKeysoundVolume,
@@ -340,7 +340,7 @@ export function NoteChartViewer({
     schedulingOverhead, setSchedulingOverhead,
   } = useViewerAudioSettings({ initialKeysoundEnabled: showKeysounds });
 
-  // 키사운드 라이프사이클 — useKeysoundLifecycle 훅으로 위임
+  // Keysound lifecycle — delegated to useKeysoundLifecycle hook
   const {
     keysoundPlayerRef,
     keysoundLoading,
@@ -360,14 +360,14 @@ export function NoteChartViewer({
   // Keep refs in sync with values for use in animation loop
   useEffect(() => {
     notesRef.current = notes;
-    // 성능 최적화: 노트를 비트 순으로 정렬 (이진 검색용)
+    // Performance optimization: sort notes by beat (for binary search)
     sortedNotesRef.current = [...notes].sort((a, b) => a.beat - b.beat);
   }, [notes]);
   useEffect(() => { keysoundEnabledRef.current = keysoundEnabled; }, [keysoundEnabled]);
   useEffect(() => { keysoundReadyRef.current = keysoundReady; }, [keysoundReady]);
-  // isPlayingRef は useViewerPlayback 훅 내부에서 관리됨 — 여기서는 불필요
+  // isPlayingRef is managed inside useViewerPlayback hook — not needed here
 
-  // Fullscreen: isFullscreen + toggleFullscreen 은 useFullscreen 훅에서 제공됨 (위에서 선언)
+  // Fullscreen: isFullscreen + toggleFullscreen are provided by useFullscreen hook (declared above)
 
   // Cleanup WebGL event listeners on unmount
   useEffect(() => {
@@ -394,7 +394,7 @@ export function NoteChartViewer({
       e.preventDefault();
       console.warn('[NoteChartViewer] WebGL context lost');
       setWebglContextLost(true);
-      // setIsPlaying(false) 은 no-op when already false, so safe to call unconditionally
+      // setIsPlaying(false) is a no-op when already false, so safe to call unconditionally
       setIsPlaying(false);
     };
 
@@ -498,30 +498,30 @@ export function NoteChartViewer({
   useEffect(() => { timingRef.current = timing; }, [timing]);
 
   const totalHeight = useMemo(() => maxBeat * effectiveBeatScale, [maxBeat, effectiveBeatScale]);
-  // progressPercent는 playbackBeat (useViewerPlayback) 이후로 이동됨
-  // effectiveHeight: chartHeightOverride가 설정되면 사용, 아니면 props height
+  // progressPercent is moved after useViewerPlayback (playbackBeat)
+  // effectiveHeight: use chartHeightOverride if set, otherwise use props height
   const effectiveHeight = useMemo(() => chartHeightOverride ?? height, [chartHeightOverride, height]);
 
-  // 비율 고정 핸들러: 가로 변경 시 세로도 비율에 맞춰 조정
+  // Aspect ratio lock handler: when width changes, adjust height proportionally
   const handleChartWidthChange = useCallback((newWidth: number) => {
     const currentWidth = chartWidthOverride ?? baseChartWidth;
     const currentHeight = chartHeightOverride ?? height;
     setChartWidthOverride(newWidth === baseChartWidth ? null : newWidth);
     if (aspectRatioLocked && currentWidth > 0) {
       const ratio = currentHeight / currentWidth;
-      const newHeight = Math.round(newWidth * ratio / 10) * 10; // 10단위로 스냅
+      const newHeight = Math.round(newWidth * ratio / 10) * 10; // snap to 10-unit steps
       setChartHeightOverride(Math.max(200, Math.min(1200, newHeight)));
     }
   }, [chartWidthOverride, chartHeightOverride, baseChartWidth, height, aspectRatioLocked]);
 
-  // 비율 고정 핸들러: 세로 변경 시 가로도 비율에 맞춰 조정
+  // Aspect ratio lock handler: when height changes, adjust width proportionally
   const handleChartHeightChange = useCallback((newHeight: number) => {
     const currentWidth = chartWidthOverride ?? baseChartWidth;
     const currentHeight = chartHeightOverride ?? height;
     setChartHeightOverride(newHeight === height ? null : newHeight);
     if (aspectRatioLocked && currentHeight > 0) {
       const ratio = currentWidth / currentHeight;
-      const newWidth = Math.round(newHeight * ratio / 10) * 10; // 10단위로 스냅
+      const newWidth = Math.round(newHeight * ratio / 10) * 10; // snap to 10-unit steps
       setChartWidthOverride(Math.max(100, Math.min(800, newWidth)) === baseChartWidth ? null : Math.max(100, Math.min(800, newWidth)));
     }
   }, [chartWidthOverride, chartHeightOverride, baseChartWidth, height, aspectRatioLocked]);
@@ -534,22 +534,22 @@ export function NoteChartViewer({
   const cameraOffset = (0.5 - judgmentLinePosition) * viewportHeight;
 
   // calculateTimeAtBeat / totalDuration / currentTime / formatTime / progressPercent / currentBpm
-  // は useViewerPlayback 이후로 이동됨 (아래 훅 호출 다음에 선언)
+  // are moved after useViewerPlayback (declared after the hook call below)
 
-  // 컬럼 뷰 계산
+  // Columns view calculations
   const totalMeasures = useMemo(() => Math.ceil(maxBeat / 4), [maxBeat]);
-  const columnBeatScale = beatScale * hiSpeed; // 컬럼 뷰에서는 zoomLevel 적용하지 않음
+  const columnBeatScale = beatScale * hiSpeed; // zoomLevel is not applied in columns view
 
-  // columnsLayout에 따른 계산
+  // Calculations based on columnsLayout
   const effectiveMeasuresPerColumn = columnsLayout === 'vertical' ? totalMeasures : localMeasuresPerColumn;
   const numColumns = columnsLayout === 'vertical' ? 1 : Math.ceil(totalMeasures / localMeasuresPerColumn);
   const singleColumnHeight = effectiveMeasuresPerColumn * 4 * columnBeatScale;
 
-  // BGM ended 콜백을 ref 로 보관 — useViewerPlayback 선언 전에 useBgmAudio를 호출해야 하므로
-  // 실제 핸들러는 아래 useViewerPlayback 이후에 ref 에 주입됨
+  // Store BGM ended callback in a ref — useBgmAudio must be called before useViewerPlayback,
+  // so the actual handler is injected into the ref after useViewerPlayback below
   const onBgmEndedRef = useRef<() => void>(() => {});
 
-  // BGM 오디오 — useBgmAudio 훅 (maxBeat 이후에 위치해야 함)
+  // BGM audio — useBgmAudio hook (must be placed after maxBeat)
   const {
     audioRef,
     audioLoaded,
@@ -559,14 +559,14 @@ export function NoteChartViewer({
     keysoundOnlyMode,
   } = useBgmAudio(audioUrl, maxBeat, () => onBgmEndedRef.current());
 
-  // Fullscreen — useFullscreen 훅
+  // Fullscreen — useFullscreen hook
   const { isFullscreen, toggleFullscreen: _toggleFullscreen } = useFullscreen();
   const toggleFullscreen = useCallback(
     () => _toggleFullscreen(outerContainerRef as React.RefObject<HTMLElement>),
     [_toggleFullscreen],
   );
 
-  // 키사운드 상태 디버깅 (임시)
+  // Keysound state debugging (temporary)
   useEffect(() => {
     if (keysoundReady && keysoundPlayerRef.current) {
       console.log('[NoteChartViewer] Keysound ready. Sample note keysounds:',
@@ -576,9 +576,9 @@ export function NoteChartViewer({
     }
   }, [keysoundReady, notes, keysounds]);
 
-  // 재생 엔진 — useViewerPlayback 훅으로 위임
-  // (애니메이션 루프, togglePlayback, calculateTimeAtBeat, 재생 상태/refs 포함)
-  // playedNotesRef는 useKeysoundTrigger가 소유 → 주입
+  // Playback engine — delegated to useViewerPlayback hook
+  // (includes animation loop, togglePlayback, calculateTimeAtBeat, playback state/refs)
+  // playedNotesRef is owned by useKeysoundTrigger → injected here
   const {
     isPlaying, setIsPlaying,
     playbackBeat, setPlaybackBeat,
@@ -608,8 +608,8 @@ export function NoteChartViewer({
     playedNotesRef,
   });
 
-  // BGM ended 핸들러를 useViewerPlayback 이후에 ref 에 주입
-  // (useBgmAudio 는 위에서 먼저 호출되어야 audioRef 를 제공함)
+  // Inject BGM ended handler into ref after useViewerPlayback
+  // (useBgmAudio must be called first above to provide audioRef)
   onBgmEndedRef.current = () => {
     if (keysoundReadyRef.current) return;
     setIsPlaying(false);
@@ -617,7 +617,7 @@ export function NoteChartViewer({
     setPlaybackBeat(maxBeat);
   };
 
-  // 시간 표시용 계산 (useViewerPlayback 이후에 위치)
+  // Time display calculations (placed after useViewerPlayback)
   const totalDuration = useMemo(() => calculateTimeAtBeat(maxBeat), [calculateTimeAtBeat, maxBeat]);
   const currentTime = useMemo(() => calculateTimeAtBeat(playbackBeat), [calculateTimeAtBeat, playbackBeat]);
   const formatTime = (seconds: number): string => {
@@ -626,7 +626,7 @@ export function NoteChartViewer({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // 현재 재생 위치의 BPM (status bar 표시용)
+  // Current playback position BPM (for status bar display)
   const currentBpm = useMemo(() => {
     if (!bpmChanges || bpmChanges.length === 0) return bpm;
     let cur = bpm;
@@ -636,28 +636,28 @@ export function NoteChartViewer({
     return cur;
   }, [bpm, bpmChanges, playbackBeat]);
 
-  // 진행률 (프로그레스 바용)
+  // Progress percentage (for progress bar)
   const progressPercent = viewMode === 'playback' ? (playbackBeat / maxBeat) * 100 : (scrollBeat / maxBeat) * 100;
 
-  // viewMode 변경 시 위치 동기화 (리셋하지 않음)
+  // Sync position when viewMode changes (do not reset)
   useEffect(() => {
-    // 재생 중이면 정지
+    // Stop playback if playing
     setIsPlaying(false);
-    // 현재 위치를 다른 모드와 동기화
+    // Sync current position to the other mode
     if (viewMode === 'playback') {
-      // scroll → playback: scrollBeat를 playbackBeat에 동기화
+      // scroll → playback: sync scrollBeat into playbackBeat
       playbackBeatRef.current = scrollBeat;
       setPlaybackBeat(scrollBeat);
     } else if (viewMode === 'scroll') {
-      // playback → scroll: playbackBeat를 scrollBeat에 동기화
+      // playback → scroll: sync playbackBeat into scrollBeat
       setScrollBeat(playbackBeatRef.current);
     }
   }, [viewMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 스크롤/모멘텀/터치/휠/키보드 핸들러는 useViewerScroll + useViewerKeyboard 훅에서 제공됨.
-  // scrollConfigRef 는 위 2768번 라인에서 매 렌더마다 maxBeat/effectiveBeatScale/scrollSpeed 로 갱신됨.
+  // Scroll/momentum/touch/wheel/keyboard handlers are provided by useViewerScroll + useViewerKeyboard hooks.
+  // scrollConfigRef is updated every render with maxBeat/effectiveBeatScale/scrollSpeed (line ~489 above).
 
-  // 키보드 단축키 — useViewerKeyboard 훅으로 위임
+  // Keyboard shortcuts — delegated to useViewerKeyboard hook
   const [isFocused, setIsFocused] = useState(false);
 
   useViewerKeyboard({
@@ -680,21 +680,21 @@ export function NoteChartViewer({
     const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const targetBeat = percent * maxBeat;
 
-    // 모든 상태를 동기화
+    // Sync all state
     playbackBeatRef.current = targetBeat;
     setPlaybackBeat(targetBeat);
     setScrollBeat(targetBeat);
 
-    // 오디오 동기화
+    // Sync audio position
     if (audioRef.current && audioLoaded) {
       audioRef.current.currentTime = targetBeat * 60 / bpm;
     }
 
-    // 키사운드 상태 초기화
+    // Reset keysound state
     playedNotesRef.current.clear();
     lastPlayedBeatRef.current = targetBeat;
 
-    // 재생 중일 때만 해당 위치에서 아직 재생 중인 키음들을 offset과 함께 재생
+    // Only when playing: resume keysounds still active at the seek position with correct offset
     if (keysoundReady && keysoundPlayerRef.current) {
       keysoundPlayerRef.current.stopAll();
       if (isPlaying) {
@@ -703,11 +703,11 @@ export function NoteChartViewer({
     }
   }, [maxBeat, audioLoaded, bpm, keysoundReady, playActiveKeysoundsAtBeat, calculateTimeAtBeat, isPlaying]);
 
-  // 미니맵 클릭 핸들러 - 해당 위치로 이동 및 키음 동기화
+  // Minimap click handler — navigate to position and sync keysounds
   const handleMinimapClick = useCallback((beat: number) => {
     const targetBeat = Math.max(0, Math.min(maxBeat, beat));
 
-    // 재생 중이면 일시정지
+    // Pause if currently playing
     const wasPlaying = isPlaying;
     if (wasPlaying) {
       setIsPlaying(false);
@@ -715,21 +715,21 @@ export function NoteChartViewer({
       if (keysoundPlayerRef.current) keysoundPlayerRef.current.stopAll();
     }
 
-    // 모든 상태를 동기화
+    // Sync all state
     playbackBeatRef.current = targetBeat;
     setPlaybackBeat(targetBeat);
     setScrollBeat(targetBeat);
 
-    // 오디오 동기화
+    // Sync audio position
     if (audioRef.current && audioLoaded) {
       audioRef.current.currentTime = targetBeat * 60 / bpm;
     }
 
-    // 키사운드 played notes 초기화 및 새 위치부터 시작
+    // Reset keysound played notes and start from new position
     playedNotesRef.current.clear();
     lastPlayedBeatRef.current = targetBeat;
 
-    // 재생 중이었으면 해당 위치에서 아직 재생 중인 키음들을 offset과 함께 재생하고 다시 재생
+    // If was playing: resume keysounds still active at seek position with correct offset, then resume playback
     if (wasPlaying) {
       if (keysoundReady && keysoundPlayerRef.current) {
         playActiveKeysoundsAtBeat(targetBeat, calculateTimeAtBeat);
@@ -738,7 +738,7 @@ export function NoteChartViewer({
     }
   }, [maxBeat, isPlaying, audioLoaded, bpm, keysoundReady, playActiveKeysoundsAtBeat, calculateTimeAtBeat]);
 
-  // 뷰포트에 보이는 비트 수 계산 (미니맵용)
+  // Calculate number of beats visible in viewport (for minimap)
   const viewportBeats = useMemo(() => {
     return height / effectiveBeatScale;
   }, [height, effectiveBeatScale]);
@@ -759,7 +759,7 @@ export function NoteChartViewer({
   // Memoize camera config for main Canvas (scroll/playback modes)
   // Note: position is set to [0, 0, 100] as CameraController handles actual position via useFrame
   // This prevents R3F from recreating internal structures when scrollBeat changes
-  // BPM 텍스트를 위한 왼쪽 여백
+  // Left margin for BPM text
   const LEFT_MARGIN_FOR_TEXT = 90;
   const mainCameraConfig = useMemo(() => ({
     position: [0, 0, 100] as [number, number, number],
@@ -890,7 +890,7 @@ export function NoteChartViewer({
 
   // Create stable style objects that don't change based on viewMode (scroll vs playback)
   // This prevents R3F Canvas recreation when switching between scroll/playback modes
-  // 캔버스 너비에 BPM 텍스트 영역 포함
+  // Canvas width includes the BPM text margin area
   const canvasWidth = chartWidth + LEFT_MARGIN_FOR_TEXT;
   const mainCanvasStyle = useMemo(() => ({
     background: '#1a1a2e',
@@ -934,7 +934,7 @@ export function NoteChartViewer({
         className
       )}
     >
-      {/* 헤더 */}
+      {/* Header */}
       <div className="flex items-center justify-between p-3 border-b bg-muted/50">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">Note Chart</span>
@@ -951,7 +951,7 @@ export function NoteChartViewer({
         </div>
       </div>
 
-      {/* 컨트롤 */}
+      {/* Controls */}
       <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30 flex-wrap gap-2">
         <div className="flex items-center gap-1">
           <button onClick={() => setViewMode('playback')} className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors", viewMode === 'playback' ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground")}>
@@ -991,7 +991,7 @@ export function NoteChartViewer({
               {isPlaying ? <><Pause className="h-3.5 w-3.5" />Pause</> : <><Play className="h-3.5 w-3.5" />Play</>}
             </button>
             <button onClick={() => { playbackBeatRef.current = maxBeat; setPlaybackBeat(maxBeat); setScrollBeat(maxBeat); if (audioRef.current) audioRef.current.currentTime = maxBeat * 60 / bpm; }} className="p-1.5 rounded-md hover:bg-muted text-muted-foreground"><SkipForward className="h-3.5 w-3.5" /></button>
-            {/* 시간 및 마디 표시 */}
+            {/* Time and measure display */}
             <div className="flex items-center gap-1.5 text-xs">
               <span className="font-mono text-orange-400">{formatTime(currentTime)}</span>
               <span className="text-muted-foreground">/</span>
@@ -1005,7 +1005,7 @@ export function NoteChartViewer({
                   "flex items-center gap-1 text-xs px-2 py-1 rounded",
                   audioLoading ? "bg-yellow-500/20 text-yellow-400" :
                     audioLoaded ? "bg-green-500/20 text-green-500" :
-                      keysoundOnlyMode ? "bg-blue-500/20 text-blue-400" : // keysound-only mode는 파란색 (정상)
+                      keysoundOnlyMode ? "bg-blue-500/20 text-blue-400" : // keysound-only mode shows blue (normal state)
                         audioError ? "bg-red-500/20 text-red-400" :
                           "bg-muted/50 text-muted-foreground"
                 )}
@@ -1137,7 +1137,7 @@ export function NoteChartViewer({
                 {t('noteChart.settings.resetLabel')}
               </button>
             )}
-            {/* 비율 고정 토글 */}
+            {/* Aspect ratio lock toggle */}
             <button
               onClick={() => setAspectRatioLocked(!aspectRatioLocked)}
               className={cn(
@@ -1175,7 +1175,7 @@ export function NoteChartViewer({
             )}
           </div>
 
-          {/* Measures per Column (컬럼 뷰 전용) */}
+          {/* Measures per Column (columns view only) */}
           {viewMode === 'columns' && (
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-muted-foreground w-16">{t('viewer.settings.measuresPerColumn')}</span>
@@ -1192,7 +1192,7 @@ export function NoteChartViewer({
           </div>
           )}
 
-          {/* Columns Layout (컬럼 뷰 전용) */}
+          {/* Columns Layout (columns view only) */}
           {viewMode === 'columns' && (
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-muted-foreground w-16">{t('viewer.settings.layout')}</span>
@@ -1213,7 +1213,7 @@ export function NoteChartViewer({
           </div>
           )}
 
-          {/* Grid Division (그리드 간격) */}
+          {/* Grid Division (grid spacing) */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-muted-foreground w-16">{t('viewer.settings.grid')}</span>
             <NumberInputWithPresets
@@ -1230,7 +1230,7 @@ export function NoteChartViewer({
             <span className="text-xs text-muted-foreground ml-2">{t('noteChart.settings.lanePerBeatHint')}</span>
           </div>
 
-          {/* Scroll Speed - scroll 뷰 전용 */}
+          {/* Scroll Speed - scroll view only */}
           {viewMode === 'scroll' && (
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-muted-foreground w-16">{t('viewer.settings.scroll')}</span>
@@ -1248,7 +1248,7 @@ export function NoteChartViewer({
             </div>
           )}
 
-          {/* Minimap Toggle - scroll/playback 뷰 전용 */}
+          {/* Minimap Toggle - scroll/playback view only */}
           {(viewMode === 'scroll' || viewMode === 'playback') && (
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-muted-foreground w-16">{t('viewer.settings.minimap')}</span>
@@ -1263,7 +1263,7 @@ export function NoteChartViewer({
             </div>
           )}
 
-          {/* 스크롤 너비 스케일링 - scroll/playback 뷰 전용 */}
+          {/* Scroll width scaling - scroll/playback view only */}
           {(viewMode === 'scroll' || viewMode === 'playback') && (
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-muted-foreground w-16">{t('viewer.settings.widthChange')}</span>
@@ -1278,7 +1278,7 @@ export function NoteChartViewer({
             </div>
           )}
 
-          {/* Playback Speed - playback 모드 전용 */}
+          {/* Playback Speed - playback mode only */}
           {viewMode === 'playback' && (
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-muted-foreground w-16">{t('viewer.settings.speed')}</span>
@@ -1298,7 +1298,7 @@ export function NoteChartViewer({
             </div>
           )}
 
-          {/* Keysound Volume & Audio Settings - playback 모드 전용 */}
+          {/* Keysound Volume & Audio Settings - playback mode only */}
           {viewMode === 'playback' && keysounds && Object.keys(keysounds).length > 0 && (
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-muted-foreground w-16">{t('viewer.settings.keysoundVolume')}</span>
@@ -1337,11 +1337,11 @@ export function NoteChartViewer({
             </div>
           )}
 
-          {/* 타이밍 마커 설정 (BPM/STOP/SCROLL) */}
+          {/* Timing marker settings (BPM/STOP/SCROLL) */}
           <div className="border-t border-muted/30 pt-3 mt-1">
             <div className="text-xs text-muted-foreground mb-2 font-medium">{t('viewer.settings.timingMarkerHeading')}</div>
 
-            {/* BPM 마커 설정 */}
+            {/* BPM marker settings */}
             <div className="flex items-center gap-2 flex-wrap mb-2">
               <span className="text-xs text-muted-foreground w-16">BPM:</span>
               <button
@@ -1380,7 +1380,7 @@ export function NoteChartViewer({
               />
             </div>
 
-            {/* STOP 마커 설정 */}
+            {/* STOP marker settings */}
             <div className="flex items-center gap-2 flex-wrap mb-2">
               <span className="text-xs text-muted-foreground w-16">STOP:</span>
               <button
@@ -1419,7 +1419,7 @@ export function NoteChartViewer({
               />
             </div>
 
-            {/* SCROLL 마커 설정 */}
+            {/* SCROLL marker settings */}
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs text-muted-foreground w-16">SCROLL:</span>
               <button
@@ -1476,7 +1476,7 @@ export function NoteChartViewer({
         />
       </div>
 
-      {/* WebGL Canvas - 일반 뷰 모드 (scroll, playback) */}
+      {/* WebGL Canvas - normal view modes (scroll, playback) */}
       {viewMode !== 'columns' && (
         <div
           ref={containerRef}
@@ -1490,7 +1490,7 @@ export function NoteChartViewer({
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
         >
-          {/* Lane Labels (HTML overlay) - BPM 텍스트 영역 제외한 노트 영역에 정렬 */}
+          {/* Lane Labels (HTML overlay) - aligned to the note area, excluding the BPM text margin */}
           <div
             className="absolute bottom-1 z-10 pointer-events-none flex"
             style={{ width: chartWidth, left: '50%', transform: `translateX(calc(-50% + ${LEFT_MARGIN_FOR_TEXT / 2}px))` }}
@@ -1506,7 +1506,7 @@ export function NoteChartViewer({
             ))}
           </div>
 
-          {/* 미니맵 (scroll, playback 모드에서만 표시) */}
+          {/* Minimap (shown only in scroll and playback modes) */}
           {showMinimap && (viewMode === 'scroll' || viewMode === 'playback') && (
             <Minimap
               notes={notes}
@@ -1531,7 +1531,7 @@ export function NoteChartViewer({
             onCreated={handleCanvasCreated}
           >
             <Suspense fallback={null}>
-              {/* 설정 변경 시 강제 렌더링 */}
+              {/* Force re-render on settings change */}
               <SceneInvalidator deps={[
                 localNoteFilter.playable,
                 localNoteFilter.invisible,
@@ -1576,7 +1576,7 @@ export function NoteChartViewer({
         </div>
       )}
 
-      {/* WebGL Canvas - 컬럼 뷰 모드 */}
+      {/* WebGL Canvas - columns view mode */}
       {viewMode === 'columns' && (
         <div
           tabIndex={0}
@@ -1599,7 +1599,7 @@ export function NoteChartViewer({
             onCreated={handleCanvasCreated}
           >
             <Suspense fallback={null}>
-              {/* 설정 변경 시 강제 렌더링 */}
+              {/* Force re-render on settings change */}
               <SceneInvalidator deps={[
                 localNoteFilter.playable,
                 localNoteFilter.invisible,
@@ -1644,7 +1644,7 @@ export function NoteChartViewer({
         </div>
       )}
 
-      {/* WebGL 컨텍스트 손실 경고 */}
+      {/* WebGL context lost warning */}
       {webglContextLost && (
         <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
           <div className="text-center text-white">
@@ -1654,7 +1654,7 @@ export function NoteChartViewer({
         </div>
       )}
 
-      {/* 힌트 및 상태 표시 */}
+      {/* Hint and status display */}
       <div className="p-2 text-xs text-muted-foreground border-t flex items-center justify-between">
         <span>
           {viewMode === 'playback' && (isPlaying

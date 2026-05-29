@@ -1,7 +1,7 @@
 /**
  * NoteChartEditor Pure Utility Functions
  *
- * 좌표 변환, 그리드 스냅, 색상 계산 등 순수 함수
+ * Pure utility functions: coordinate conversion, grid snapping, color calculation
  */
 
 import React from 'react';
@@ -10,28 +10,28 @@ import type { EditableBMSNote } from '@rhythm-archive/bms-core';
 import { DEFAULT_NOTE_HEIGHT } from './types';
 import type { GridSnap, CustomNoteColors } from './types';
 
-// 노트 높이 Context (하위 컴포넌트에서 참조)
+// Note height Context (referenced by child components)
 export const NoteHeightContext = React.createContext(DEFAULT_NOTE_HEIGHT);
 export function useNoteHeight() { return React.useContext(NoteHeightContext); }
 
-/** BGM 노트의 레인 ID를 반환. bgmChannel에 따라 'BGM', 'BGM1', 'BGM2' 등 */
+/** Returns the lane ID for a BGM note. Returns 'BGM', 'BGM1', 'BGM2', etc. based on bgmChannel. */
 export function getBgmLaneId(note: EditableBMSNote): string {
   const ch = note.bgmChannel ?? 0;
   return ch === 0 ? 'BGM' : `BGM${ch}`;
 }
 
-/** 레인 ID가 BGM 레인인지 확인 */
+/** Returns true if the lane ID is a BGM lane. */
 export function isBgmLaneId(laneId: string): boolean {
   return laneId === 'BGM' || laneId.startsWith('BGM');
 }
 
-/** 레인 ID에서 bgmChannel 번호 추출 */
+/** Extracts the bgmChannel number from a lane ID. */
 export function bgmLaneIdToChannel(laneId: string): number {
   if (laneId === 'BGM') return 0;
   return parseInt(laneId.slice(3), 10) || 0;
 }
 
-// 비트를 마디와 분수로 변환
+// Converts a beat to measure + fraction
 export function beatToMeasureFraction(
   beat: number,
   beatsPerMeasure: number = 4
@@ -42,8 +42,8 @@ export function beatToMeasureFraction(
 }
 
 /**
- * 비트를 그리드에 스냅 (tick 기반 정수 연산 — 부동소수점 오차 제거)
- * 960 ticks/beat 기준으로 정수 연산 후 beat로 변환
+ * Snaps a beat to the grid using tick-based integer arithmetic to eliminate floating-point errors.
+ * Operates in integer ticks at 960 ticks/beat, then converts back to beats.
  */
 export function snapBeatToGrid(beat: number, gridSnap: GridSnap | number): number {
   const TICKS_PER_BEAT = 960;
@@ -54,7 +54,7 @@ export function snapBeatToGrid(beat: number, gridSnap: GridSnap | number): numbe
   return snapped / TICKS_PER_BEAT;
 }
 
-// 레인 색상 캐시 (new THREE.Color() 호출을 useFrame 밖으로 이동)
+// Lane color cache (moves new THREE.Color() calls outside useFrame)
 const _laneColorCache = new Map<string, { normal: number; invisible: number }>();
 export function getLaneColorHex(laneColor: string): { normal: number; invisible: number } {
   let cached = _laneColorCache.get(laneColor);
@@ -68,7 +68,7 @@ export function getLaneColorHex(laneColor: string): { normal: number; invisible:
   return cached;
 }
 
-// CSS color string → hex number 캐시 (THREE.Color 파싱은 느리므로 캐시 필수)
+// CSS color string → hex number cache (THREE.Color parsing is slow, so caching is essential)
 const _customColorCache = new Map<string, number>();
 function parseCustomColor(color: string): number | null {
   if (_customColorCache.has(color)) return _customColorCache.get(color)!;
@@ -81,8 +81,8 @@ function parseCustomColor(color: string): number | null {
   }
 }
 
-// 노트 색상을 hex number로 변환 (캐시 사용, GC 압력 제거)
-// 우선순위: isSelected > isHighlighted > customColors > noteType 기본
+// Converts note color to a hex number (uses cache, reduces GC pressure)
+// Priority: isSelected > isHighlighted > customColors > noteType default
 export function getNoteColorHex(
   note: EditableBMSNote,
   laneColorHex: { normal: number; invisible: number },
@@ -131,7 +131,7 @@ export function getNoteColorHex(
   }
 }
 
-/** 선택 하이라이트 색상 (customColors 오버라이드 지원) */
+/** Selection highlight color (supports customColors override). */
 export function getSelectionColorHex(customColors?: CustomNoteColors): number {
   if (customColors?.selection) {
     const hex = parseCustomColor(customColors.selection);
@@ -140,6 +140,6 @@ export function getSelectionColorHex(customColors?: CustomNoteColors): number {
   return 0x00ffff;
 }
 
-// 재사용 가능한 오브젝트 (GC 압력 감소)
+// Reusable objects (reduces GC pressure)
 export const _dummy = new THREE.Object3D();
 export const _color = new THREE.Color();

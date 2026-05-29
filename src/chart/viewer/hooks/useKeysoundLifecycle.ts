@@ -1,10 +1,10 @@
 /**
- * useKeysoundLifecycle — KeysoundPlayer 초기화 + dispose + 오디오 설정 훅
+ * useKeysoundLifecycle — KeysoundPlayer init + dispose + audio settings hook
  *
- * NoteChartViewer.tsx 에서 추출된 키사운드 라이프사이클 로직.
- * keysounds / keysoundBaseUrl 이 바뀔 때마다 이전 플레이어를 dispose 하고
- * 새 플레이어를 init → load 순서로 초기화합니다.
- * 볼륨·EQ·이펙터·재생 속도 변경은 별도 useEffect 로 처리합니다.
+ * Keysound lifecycle logic extracted from NoteChartViewer.tsx.
+ * Disposes the previous player and reinitializes a new one (init → load)
+ * whenever keysounds or keysoundBaseUrl changes.
+ * Volume, EQ, effector, and playback speed changes are handled in separate useEffects.
  */
 import { useEffect, useRef, useState } from 'react';
 import { KeysoundPlayer } from '../../KeysoundPlayer';
@@ -93,7 +93,7 @@ export function useKeysoundLifecycle({
     let cancelled = false;
 
     const initKeysounds = async () => {
-      // 이전 플레이어 정리
+      // Dispose previous player
       if (keysoundPlayerRef.current) {
         keysoundPlayerRef.current.dispose();
         keysoundPlayerRef.current = null;
@@ -107,7 +107,7 @@ export function useKeysoundLifecycle({
         const player = new KeysoundPlayer({
           baseUrl: currentBaseUrl,
           keysounds: currentKeysounds,
-          volume: 0.8, // 로드 후 별도 effect에서 실제 볼륨 설정
+          volume: 0.8, // Actual volume is applied in a separate effect after load
           onProgress: (loaded, total) => {
             if (!cancelled) setKeysoundProgress({ loaded, total });
           },
@@ -130,7 +130,7 @@ export function useKeysoundLifecycle({
         await player.load();
         if (cancelled) { player.dispose(); return; }
 
-        // 진단 정보 출력
+        // Print diagnostics
         const referencedKeysoundIds = notes
           .filter(note => note.keysound)
           .map(note => note.keysound as string);
@@ -139,7 +139,7 @@ export function useKeysoundLifecycle({
         // Only NOW set the ref, after all async operations complete successfully
         keysoundPlayerRef.current = player;
 
-        // 로드 완료 후 오디오 설정 적용
+        // Apply audio settings after load completes
         const effectiveVolume = keysoundMutedRef.current ? 0 : keysoundVolumeRef.current / 100;
         player.setVolume(effectiveVolume);
 
@@ -171,7 +171,7 @@ export function useKeysoundLifecycle({
         keysoundPlayerRef.current = null;
       }
     };
-    // notes 는 진단용이라 deps 에서 제외 (keysounds/keysoundBaseUrl 변경 시만 재초기화)
+    // notes is excluded from deps as it is only used for diagnostics (reinit only on keysounds/keysoundBaseUrl change)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keysounds, keysoundBaseUrl]);
 

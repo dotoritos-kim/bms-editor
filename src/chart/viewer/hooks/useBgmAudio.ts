@@ -1,9 +1,9 @@
 /**
- * useBgmAudio — BGM HTMLAudioElement 로딩 + 진행률 추적 훅
+ * useBgmAudio — BGM HTMLAudioElement loading + progress tracking hook
  *
- * NoteChartViewer.tsx 에서 추출된 BGM 오디오 로딩 로직.
- * 반환된 audioRef 는 재생 제어(play/pause/seek)에 사용되며,
- * cleanup 시 blob URL 을 자동으로 해제합니다.
+ * BGM audio loading logic extracted from NoteChartViewer.tsx.
+ * The returned audioRef is used for playback control (play/pause/seek),
+ * and blob URLs are automatically revoked on cleanup.
  */
 import { useEffect, useRef, useState } from 'react';
 import { getErrorMessage } from '../../../utils';
@@ -65,7 +65,7 @@ export function useBgmAudio(
             const errorData = await response.json();
             if (errorData.message) errorMsg = errorData.message;
           } catch {
-            // JSON 파싱 실패 시 기본 메시지 사용
+            // Use default message if JSON parsing fails
           }
           setAudioLoading(false);
           if (errorMsg.includes('too many notes') || errorMsg.includes('too many keysounds')) {

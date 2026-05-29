@@ -1,8 +1,8 @@
 /**
  * KeysoundUploadDialog
  *
- * 키음 파일(WAV/OGG/MP3)을 편집 브랜치에 업로드하는 다이얼로그
- * 파일 선택, WAV ID 자동 할당, 업로드 + #WAV 정의 등록
+ * Dialog for uploading keysound files (WAV/OGG/MP3) to the editing branch.
+ * File selection, automatic WAV ID assignment, upload + #WAV definition registration.
  */
 
 import React, { useState, useCallback, useMemo, useRef } from 'react';
@@ -21,28 +21,28 @@ interface PendingFile {
 }
 
 interface KeysoundUploadDialogProps {
-  /** 다이얼로그 열림 상태 */
+  /** Whether the dialog is open */
   open: boolean;
-  /** 다이얼로그 닫기 콜백 */
+  /** Callback to close the dialog */
   onClose: () => void;
-  /** 업로드 완료 콜백 (WAV ID → 파일명 매핑) */
+  /** Upload complete callback (WAV ID → filename mapping) */
   onUploadComplete: (wavDefinitions: Array<{ id: string; filename: string }>) => void;
-  /** 기존 WAV 정의 맵 (ID → 파일명) */
+  /** Existing WAV definition map (ID → filename) */
   existingWavDefinitions: Record<string, string>;
-  /** 업로드 실행 함수 */
+  /** Function to execute the upload */
   onUpload: (files: Array<{ path: string; contentBase64: string }>, commitMessage: string) => Promise<void>;
-  /** 업로드 중 상태 */
+  /** Whether an upload is in progress */
   isUploading?: boolean;
 }
 
 /**
- * 다음 사용 가능한 WAV ID 계산 (base-36: 01-ZZ)
+ * Compute the next available WAV IDs (base-36: 01-ZZ)
  */
 function getNextAvailableWavIds(existing: Record<string, string>, count: number): string[] {
   const usedIds = new Set(Object.keys(existing).map((k) => k.toUpperCase()));
   const ids: string[] = [];
 
-  // 01부터 ZZ까지 순회 (base-36 2자리: 1-1295)
+  // Iterate from 01 to ZZ (base-36 2-digit: 1–1295)
   for (let i = 1; i <= 1295 && ids.length < count; i++) {
     const id = i.toString(36).toUpperCase().padStart(2, '0');
     if (!usedIds.has(id)) {
@@ -55,14 +55,14 @@ function getNextAvailableWavIds(existing: Record<string, string>, count: number)
 }
 
 /**
- * 파일을 base64로 변환
+ * Convert a file to base64
  */
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result as string;
-      // data:audio/wav;base64,... → base64 부분만 추출
+      // data:audio/wav;base64,... → extract only the base64 portion
       const base64 = result.split(',')[1];
       resolve(base64);
     };
@@ -84,7 +84,7 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 파일 추가
+  // Add files
   const handleFilesSelected = useCallback(
     (fileList: FileList | null) => {
       if (!fileList || fileList.length === 0) return;
@@ -136,19 +136,19 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
     [pendingFiles, existingWavDefinitions, t]
   );
 
-  // 파일 삭제
+  // Remove file
   const handleRemoveFile = useCallback((index: number) => {
     setPendingFiles((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
-  // WAV ID 변경
+  // Change WAV ID
   const handleWavIdChange = useCallback((index: number, newId: string) => {
     setPendingFiles((prev) =>
       prev.map((pf, i) => (i === index ? { ...pf, wavId: newId.toUpperCase() } : pf))
     );
   }, []);
 
-  // 드래그 앤 드롭
+  // Drag and drop
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
@@ -162,12 +162,12 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
     [handleFilesSelected]
   );
 
-  // 업로드 실행
+  // Execute upload
   const handleUpload = useCallback(async () => {
     if (pendingFiles.length === 0) return;
     setError(null);
 
-    // WAV ID 중복 체크
+    // Check for duplicate WAV IDs
     const idSet = new Set<string>();
     for (const pf of pendingFiles) {
       if (idSet.has(pf.wavId) || existingWavDefinitions[pf.wavId]) {
@@ -178,7 +178,7 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
     }
 
     try {
-      // 파일들을 base64로 변환
+      // Convert files to base64
       const fileData = await Promise.all(
         pendingFiles.map(async (pf) => ({
           path: pf.file.name,
@@ -188,14 +188,14 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
 
       await onUpload(fileData, t('panels.keysound.uploadDialog.commitMessage', { count: pendingFiles.length }));
 
-      // 성공: WAV 정의 콜백
+      // Success: fire WAV definition callback
       const wavDefs = pendingFiles.map((pf) => ({
         id: pf.wavId,
         filename: pf.file.name,
       }));
       onUploadComplete(wavDefs);
 
-      // 초기화
+      // Reset state
       setPendingFiles([]);
       onClose();
     } catch (err) {
@@ -203,7 +203,7 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
     }
   }, [pendingFiles, existingWavDefinitions, onUpload, onUploadComplete, onClose, t]);
 
-  // 총 크기 계산
+  // Compute total size
   const totalSize = useMemo(() => {
     return pendingFiles.reduce((sum, pf) => sum + pf.file.size, 0);
   }, [pendingFiles]);
@@ -222,7 +222,7 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
         className="bg-background border rounded-lg shadow-lg w-full max-w-lg max-h-[80vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* 헤더 */}
+        {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b">
           <h3 className="text-sm font-semibold flex items-center gap-2">
             <Upload className="h-4 w-4" />
@@ -233,7 +233,7 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
           </button>
         </div>
 
-        {/* 드롭 영역 */}
+        {/* Drop zone */}
         <div className="p-4">
           <div
             onDragOver={handleDragOver}
@@ -259,7 +259,7 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
           />
         </div>
 
-        {/* 에러 표시 */}
+        {/* Error display */}
         {error && (
           <div className="mx-4 mb-2 p-2 rounded bg-destructive/10 text-destructive text-xs flex items-center gap-1.5">
             <AlertCircle className="h-3.5 w-3.5 shrink-0" />
@@ -267,7 +267,7 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
           </div>
         )}
 
-        {/* 파일 목록 */}
+        {/* File list */}
         {pendingFiles.length > 0 && (
           <div className="flex-1 overflow-y-auto px-4 min-h-0">
             <div className="space-y-1">
@@ -298,7 +298,7 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
           </div>
         )}
 
-        {/* 푸터 */}
+        {/* Footer */}
         <div className="flex items-center justify-between px-4 py-3 border-t">
           <span className="text-xs text-muted-foreground">
             {t('panels.keysound.uploadDialog.fileCountSummary', { count: pendingFiles.length, size: formatSize(totalSize) })}

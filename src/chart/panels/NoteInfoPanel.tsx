@@ -1,9 +1,9 @@
 /**
  * NoteInfoPanel
  *
- * 선택된 노트의 상세 정보를 표시하는 패널
- * 단일 선택: 키음, 위치, 타이밍, 타입 등 상세 정보
- * 다중 선택: 요약 통계
+ * Panel that displays detailed information about the selected note(s).
+ * Single selection: keysound, position, timing, type, and other details.
+ * Multi-selection: summary statistics.
  */
 
 import React, { useMemo, useState, useCallback } from 'react';
@@ -14,30 +14,30 @@ import type { EditableBMSNote, BMSBpmChange, BMSStopEvent } from '@rhythm-archiv
 import type { GridSnap } from '../NoteChartEditor';
 
 interface NoteInfoPanelProps {
-  /** 선택된 노트 목록 */
+  /** List of selected notes */
   selectedNotes: EditableBMSNote[];
-  /** WAV 정의 맵 (ID → 파일명) */
+  /** WAV definition map (ID → filename) */
   wavDefinitions: Map<string, string>;
-  /** BPM 변경 이벤트 목록 */
+  /** BPM change event list */
   bpmChanges: BMSBpmChange[];
-  /** STOP 이벤트 목록 */
+  /** STOP event list */
   stopEvents: BMSStopEvent[];
-  /** 초기 BPM */
+  /** Initial BPM */
   initialBpm: number;
-  /** 현재 그리드 스냅 설정 */
+  /** Current grid snap setting */
   gridSnap: GridSnap;
-  /** 키음 레이어 추가 콜백 */
+  /** Callback to add a keysound layer */
   onAddKeysoundLayer?: (noteId: string, keysoundId: string, type: 'invisible' | 'bgm') => void;
-  /** 키음 레이어 삭제 콜백 */
+  /** Callback to remove a keysound layer */
   onRemoveKeysoundLayer?: (noteId: string, layerIndex: number) => void;
-  /** 현재 선택된 키음 ID (레이어 추가 시 사용) */
+  /** Currently selected keysound ID (used when adding a layer) */
   currentKeysound?: string;
-  /** 추가 클래스명 */
+  /** Additional class name */
   className?: string;
 }
 
 /**
- * BPM 변경 및 STOP 이벤트를 고려하여 비트 → 초 변환
+ * Convert beat → seconds, accounting for BPM changes and STOP events.
  */
 function beatToSeconds(
   targetBeat: number,
@@ -45,7 +45,7 @@ function beatToSeconds(
   bpmChanges: BMSBpmChange[],
   stopEvents: BMSStopEvent[],
 ): number {
-  // BPM 변경을 비트 기준으로 정렬
+  // Sort BPM changes by beat position
   const bpmEvents = bpmChanges
     .map((c) => ({
       beat: c.measure * 4 + c.fraction * 4,
@@ -53,7 +53,7 @@ function beatToSeconds(
     }))
     .sort((a, b) => a.beat - b.beat);
 
-  // STOP 이벤트를 비트 기준으로 정렬
+  // Sort STOP events by beat position
   const stopEvts = stopEvents
     .map((s) => ({
       beat: s.measure * 4 + s.fraction * 4,
@@ -65,12 +65,12 @@ function beatToSeconds(
   let currentBeat = 0;
   let totalSeconds = 0;
 
-  // BPM 변경점과 STOP 이벤트를 시간순으로 처리
+  // Process BPM changes and STOP events in chronological order
   let bpmIdx = 0;
   let stopIdx = 0;
 
   while (currentBeat < targetBeat) {
-    // 다음 이벤트 비트 찾기
+    // Find the next event beat
     let nextEventBeat = targetBeat;
     if (bpmIdx < bpmEvents.length && bpmEvents[bpmIdx].beat < nextEventBeat) {
       nextEventBeat = bpmEvents[bpmIdx].beat;
@@ -79,14 +79,14 @@ function beatToSeconds(
       nextEventBeat = stopEvts[stopIdx].beat;
     }
 
-    // 현재 비트에서 다음 이벤트까지의 시간 누적
+    // Accumulate time from current beat to the next event
     const beatDelta = nextEventBeat - currentBeat;
     if (beatDelta > 0 && currentBpm > 0) {
       totalSeconds += (beatDelta / currentBpm) * 60;
     }
     currentBeat = nextEventBeat;
 
-    // 이벤트 처리
+    // Process events at the current beat
     if (bpmIdx < bpmEvents.length && Math.abs(bpmEvents[bpmIdx].beat - currentBeat) < 0.0001) {
       currentBpm = bpmEvents[bpmIdx].bpm;
       bpmIdx++;
@@ -103,7 +103,7 @@ function beatToSeconds(
 }
 
 /**
- * 비트가 그리드 스냅에 정확히 맞는지 확인
+ * Check whether a beat aligns exactly to the grid snap.
  */
 function isOnGrid(beat: number, gridSnap: GridSnap): boolean {
   const TICKS_PER_BEAT = 960;
@@ -113,7 +113,7 @@ function isOnGrid(beat: number, gridSnap: GridSnap): boolean {
 }
 
 /**
- * 비트를 마디:분수 형태로 포맷
+ * Format a beat as measure:fraction.
  */
 function formatBeatPosition(beat: number): string {
   const measure = Math.floor(beat / 4);
@@ -122,7 +122,7 @@ function formatBeatPosition(beat: number): string {
 }
 
 /**
- * 노트 타입 한글 표시
+ * Display label for note type.
  */
 function noteTypeLabel(noteType: string | undefined): string {
   switch (noteType) {
@@ -134,7 +134,7 @@ function noteTypeLabel(noteType: string | undefined): string {
   }
 }
 
-/** 정보 행 */
+/** Info row */
 function InfoRow({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex justify-between items-center py-0.5">
@@ -166,10 +166,10 @@ export const NoteInfoPanel = React.memo(function NoteInfoPanel({
 
   // Ref to track single note for callbacks
   const singleNoteRef = React.useRef<EditableBMSNote | null>(null);
-  // 단일 선택 정보
+  // Single selection info
   const singleNote = selectedNotes.length === 1 ? selectedNotes[0] : null;
 
-  // 단일 노트 상세 정보 계산
+  // Compute single-note detail info
   const noteDetails = useMemo(() => {
     if (!singleNote) return null;
 
@@ -200,7 +200,7 @@ export const NoteInfoPanel = React.memo(function NoteInfoPanel({
     };
   }, [singleNote, wavDefinitions, bpmChanges, stopEvents, initialBpm, gridSnap, t]);
 
-  // 다중 선택 요약 정보
+  // Multi-selection summary info
   const multiSummary = useMemo(() => {
     if (selectedNotes.length <= 1) return null;
 
@@ -272,10 +272,10 @@ export const NoteInfoPanel = React.memo(function NoteInfoPanel({
     );
   }
 
-  // 단일 선택 상세
+  // Single selection detail
   if (!singleNote || !noteDetails) return null;
 
-  // singleNoteRef 업데이트
+  // Update singleNoteRef
   singleNoteRef.current = singleNote;
 
   return (

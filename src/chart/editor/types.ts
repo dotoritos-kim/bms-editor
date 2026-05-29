@@ -18,7 +18,7 @@ export {
   getLayerOpacity,
 } from './layers';
 
-// 에디터 도구 타입
+// Editor tool types
 export type EditorTool =
   | 'select'
   | 'addNote'
@@ -28,10 +28,10 @@ export type EditorTool =
   | 'stop'
   | 'keysound';
 
-// 노트 타입 선택
+// Selected note type
 export type SelectedNoteType = 'playable' | 'invisible' | 'landmine' | 'longNote' | 'bgm';
 
-// 그리드 스냅 옵션 (확장: 셋잇단 12/24 + 고정밀 128/256/384 추가)
+// Grid snap options (extended: triplet 12/24 + high-precision 128/256/384 added)
 export const GRID_SNAP_OPTIONS = [4, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192, 256, 384] as const;
 export type GridSnapPreset = (typeof GRID_SNAP_OPTIONS)[number];
 export type GridSnap = GridSnapPreset | number;
@@ -48,7 +48,7 @@ export function isPresetGridSnap(value: number): value is GridSnapPreset {
   return (GRID_SNAP_OPTIONS as readonly number[]).includes(value);
 }
 
-// InstancedMesh 상수
+// InstancedMesh constants
 export const MAX_VISIBLE_EDITOR_NOTES = 3000;
 export const MAX_VISIBLE_SELECTIONS = 500;
 export const MAX_VISIBLE_LONGNOTE_BODIES = 500;
@@ -57,12 +57,12 @@ export const MAX_ACTIVE_FLASH = 64;
 export const DEFAULT_NOTE_HEIGHT = 2;
 export const NOTE_PADDING = 1;
 
-/** 좌표 변환 API (드래그 앤 드롭용) */
+/** Coordinate conversion API (for drag-and-drop) */
 export interface CoordConverter {
   screenToWorldBeat: (clientX: number, clientY: number) => { beat: number; column: string | null } | null;
 }
 
-/** 줌 컨트롤 API (zoomControlRef용) */
+/** Zoom control API (for zoomControlRef) */
 export interface ZoomControl {
   zoomIn: () => void;
   zoomOut: () => void;
@@ -70,63 +70,63 @@ export interface ZoomControl {
   fitToChart: () => void;
 }
 
-/** 커스텀 노트 색상 오버라이드 (노트 타입별 CSS color string) */
+/** Custom note color overrides (CSS color string per note type) */
 export interface CustomNoteColors {
-  /** 일반(플레이어블) 노트 색상 — 미지정 시 레인 색상 */
+  /** Playable note color — falls back to lane color if unset */
   playable?: string;
-  /** 인비저블 노트 색상 */
+  /** Invisible note color */
   invisible?: string;
-  /** 지뢰 노트 색상 */
+  /** Landmine note color */
   landmine?: string;
-  /** BGM 노트 색상 */
+  /** BGM note color */
   bgm?: string;
-  /** 선택된 노트 하이라이트 색상 */
+  /** Selected note highlight color */
   selection?: string;
-  /** 캔버스 배경 색상 */
+  /** Canvas background color */
   background?: string;
 }
 
 export interface NoteChartEditorProps {
-  /** 편집할 노트 배열 */
+  /** Array of notes to edit */
   notes: EditableBMSNote[];
-  /** 키 모드 */
+  /** Key mode */
   keyMode: KeyMode;
-  /** 총 비트 수 */
+  /** Total number of beats */
   totalBeats: number;
-  /** 컴포넌트 높이 */
+  /** Component height */
   height?: number | string;
-  /** 비트당 픽셀 스케일 */
+  /** Pixels-per-beat scale */
   beatScale?: number;
-  /** 추가 클래스명 */
+  /** Additional CSS class name */
   className?: string;
-  /** 현재 선택된 도구 */
+  /** Currently active tool */
   activeTool: EditorTool;
-  /** 그리드 스냅 값 */
+  /** Grid snap value */
   gridSnap: GridSnap;
-  /** Snap to grid 활성화 여부 (OFF면 free placement, Shift 드래그도 free) */
+  /** Whether snap-to-grid is enabled (OFF = free placement; Shift drag also free) */
   snapEnabled?: boolean;
-  /** 선택된 노트 ID 집합 */
+  /** Set of selected note IDs */
   selectedNotes: Set<string>;
-  /** 선택할 노트 타입 (노트 추가 시) */
+  /** Note type to use when adding notes */
   selectedNoteType: SelectedNoteType;
-  /** 현재 키음 ID (노트 추가 시) */
+  /** Current keysound ID (used when adding notes) */
   currentKeysound: string;
-  /** BPM 변경 이벤트 */
+  /** BPM change events */
   bpmChanges?: BMSBpmChange[];
-  /** STOP 이벤트 */
+  /** STOP events */
   stopEvents?: BMSStopEvent[];
-  /** 기본 BPM */
+  /** Base BPM */
   baseBpm?: number;
-  /** 박자표 (마디별 크기, 그리드선 렌더링에 사용) */
+  /** Time signatures (per-measure size, used for grid line rendering) */
   timeSignatures?: Map<number, number>;
-  /** 마디별 gridSnap 오버라이드 */
+  /** Per-measure gridSnap overrides */
   gridSnapOverrides?: Map<number, number>;
-  /** 레이어별 가시성/잠금/불투명도 설정 */
+  /** Per-layer visibility / lock / opacity settings */
   layerConfig?: LayerConfig;
-  /** BGM 채널 수 (멀티 BGM 레인 생성용, 기본값 1) */
+  /** BGM channel count (for multi-BGM lane creation; default 1) */
   bgmChannelCount?: number;
 
-  // 이벤트 핸들러
+  // Event handlers
   onNoteAdd: (note: Omit<EditableBMSNote, 'id'>) => void;
   onNoteDelete: (noteIds: string[]) => void;
   onNoteMove: (
@@ -146,26 +146,26 @@ export interface NoteChartEditorProps {
   onDropKeysound?: (keysoundId: string, beat: number, column: string) => void;
   onNoteHover?: (keysoundId: string | null) => void;
 
-  // 네비게이션
+  // Navigation
   scrollToBeat?: number;
   onScrollChange?: (beat: number) => void;
   /** Imperative scroll ref for smooth playback (read every frame in useFrame, bypasses React re-renders) */
   scrollBeatImperativeRef?: React.RefObject<number>;
-  /** 줌 컨트롤 imperative ref (zoomIn/zoomOut/zoomTo/fitToChart) */
+  /** Zoom control imperative ref (zoomIn/zoomOut/zoomTo/fitToChart) */
   zoomControlRef?: React.MutableRefObject<ZoomControl | null>;
-  /** 줌 배율 변경 콜백 (rAF 디바운스로 호출) */
+  /** Beat scale change callback (called with rAF debounce) */
   onBeatScaleChange?: (scale: number) => void;
 
-  // 키음 하이라이트
-  /** 하이라이트할 키음 ID (해당 키음을 사용하는 노트가 주황색으로 표시) */
+  // Keysound highlight
+  /** Keysound ID to highlight (notes using this keysound are shown in orange) */
   highlightKeysound?: string | null;
 
-  // 상태 표시
+  // Status display
   hasUnsavedChanges?: boolean;
   branchName?: string;
-  /** 노트 높이 (두께, 기본값 2) */
+  /** Note height (thickness, default 2) */
   noteHeight?: number;
-  /** 커스텀 노트 색상 오버라이드 */
+  /** Custom note color overrides */
   customColors?: CustomNoteColors;
 }
 

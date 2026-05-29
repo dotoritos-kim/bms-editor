@@ -1,41 +1,41 @@
 /**
  * EditorPlayback
  *
- * 차트 에디터 재생 엔진
- * AudioContext 기반으로 비트 순서로 노트를 순회하며 키음 트리거
- * requestAnimationFrame으로 스크롤 동기화
+ * Chart editor playback engine.
+ * Traverses notes in beat order and triggers keysounds via AudioContext.
+ * Synchronizes scroll position via requestAnimationFrame.
  */
 
 import type { EditableBMSNote, BMSBpmChange } from '@rhythm-archive/bms-core';
 import type { KeysoundPlayer } from './KeysoundPlayer';
 
-/** 재생 옵션 */
+/** Playback options */
 export interface EditorPlaybackOptions {
-  /** 키음 플레이어 */
+  /** Keysound player */
   player: KeysoundPlayer;
-  /** 노트 배열 */
+  /** Note array */
   notes: EditableBMSNote[];
-  /** BPM 변경 배열 */
+  /** BPM change array */
   bpmChanges: BMSBpmChange[];
-  /** 기본 BPM */
+  /** Base BPM */
   baseBpm: number;
-  /** 재생 속도 배율 (기본: 1) */
+  /** Playback speed multiplier (default: 1) */
   speed?: number;
-  /** 매 프레임 콜백 (현재 비트 전달) */
+  /** Per-frame callback delivering current beat */
   onBeatUpdate: (beat: number) => void;
-  /** 재생 종료 콜백 */
+  /** Playback end callback */
   onEnd: () => void;
 }
 
-/** BPM 이벤트 (비트 기반) */
+/** BPM event (beat-based) */
 export interface BpmEvent {
   beat: number;
   bpm: number;
 }
 
 /**
- * 비트 → 시간(초) 변환 테이블 생성
- * BPM 변경을 고려하여 각 비트의 절대 시간 계산
+ * Build a beat-to-time lookup table.
+ * Calculates absolute time for each beat, accounting for BPM changes.
  */
 export function buildBeatToTimeMap(
   bpmChanges: BMSBpmChange[],
@@ -48,12 +48,12 @@ export function buildBeatToTimeMap(
     events.push({ beat, bpm: change.bpm });
   }
 
-  // 비트 순 정렬
+  // Sort by beat
   events.sort((a, b) => a.beat - b.beat);
   return events;
 }
 
-/** 비트 → 절대 시간(초) 변환 */
+/** Convert beat → absolute time (seconds) */
 export function beatToTime(beat: number, bpmEvents: BpmEvent[]): number {
   let time = 0;
   let prevBeat = 0;
@@ -67,14 +67,14 @@ export function beatToTime(beat: number, bpmEvents: BpmEvent[]): number {
     currentBpm = event.bpm;
   }
 
-  // 남은 구간
+  // Remaining segment
   const remaining = beat - prevBeat;
   time += (remaining / currentBpm) * 60;
 
   return time;
 }
 
-/** 절대 시간(초) → 비트 변환 */
+/** Convert absolute time (seconds) → beat */
 export function timeToBeat(targetTime: number, bpmEvents: BpmEvent[]): number {
   let time = 0;
   let prevBeat = 0;
@@ -85,7 +85,7 @@ export function timeToBeat(targetTime: number, bpmEvents: BpmEvent[]): number {
     const segmentDuration = (deltaBeat / currentBpm) * 60;
 
     if (time + segmentDuration >= targetTime) {
-      // 이 세그먼트 내에 위치
+      // Position is within this segment
       const remaining = targetTime - time;
       return prevBeat + (remaining / 60) * currentBpm;
     }
@@ -95,7 +95,7 @@ export function timeToBeat(targetTime: number, bpmEvents: BpmEvent[]): number {
     currentBpm = event.bpm;
   }
 
-  // 마지막 BPM 구간
+  // Last BPM segment
   const remaining = targetTime - time;
   return prevBeat + (remaining / 60) * currentBpm;
 }
@@ -108,7 +108,7 @@ export class EditorPlayback {
 
   private animationFrameId: number | null = null;
   private playbackStartTime: number = 0;
-  private startBeatTime: number = 0; // startBeat의 절대 시간
+  private startBeatTime: number = 0; // Absolute time of startBeat
   private nextNoteIndex: number = 0;
   private sortedNotes: EditableBMSNote[];
   private maxBeat: number;
@@ -126,7 +126,7 @@ export class EditorPlayback {
       options.baseBpm,
     );
 
-    // 비트 순 정렬
+    // Sort by beat
     this.sortedNotes = [...options.notes]
       .filter((n) => n.noteType !== 'landmine')
       .sort((a, b) => a.beat - b.beat);
@@ -136,7 +136,7 @@ export class EditorPlayback {
       : 0;
   }
 
-  /** 특정 비트부터 재생 시작 */
+  /** Start playback from a given beat */
   start(fromBeat: number = 0): void {
     if (this.isPlaying) this.stop();
     if (!this.player.isReady) return;
@@ -145,14 +145,14 @@ export class EditorPlayback {
     this.startBeatTime = beatToTime(fromBeat, this.bpmEvents);
     this.playbackStartTime = this.player.getContextTime();
 
-    // 시작 비트 이후의 첫 번째 노트 인덱스 찾기
+    // Find the index of the first note at or after the start beat
     this.nextNoteIndex = this.sortedNotes.findIndex((n) => n.beat >= fromBeat);
     if (this.nextNoteIndex === -1) this.nextNoteIndex = this.sortedNotes.length;
 
     this.tick();
   }
 
-  /** 재생 정지 */
+  /** Stop playback */
   stop(): void {
     this.isPlaying = false;
     if (this.animationFrameId !== null) {
@@ -162,12 +162,12 @@ export class EditorPlayback {
     this.player.stopAll();
   }
 
-  /** 재생 중인지 여부 */
+  /** Whether playback is active */
   get playing(): boolean {
     return this.isPlaying;
   }
 
-  /** 매 프레임 처리 */
+  /** Per-frame processing */
   private tick = (): void => {
     if (!this.isPlaying) return;
 
@@ -175,10 +175,10 @@ export class EditorPlayback {
     const currentAbsTime = this.startBeatTime + elapsed;
     const currentBeat = timeToBeat(currentAbsTime, this.bpmEvents);
 
-    // 현재 비트까지의 노트 트리거
+    // Trigger notes up to the current beat
     while (this.nextNoteIndex < this.sortedNotes.length) {
       const note = this.sortedNotes[this.nextNoteIndex];
-      if (note.beat > currentBeat + 0.01) break; // 약간의 여유
+      if (note.beat > currentBeat + 0.01) break; // Small lookahead margin
 
       if (note.keysound) {
         this.player.play(note.keysound);
@@ -186,10 +186,10 @@ export class EditorPlayback {
       this.nextNoteIndex++;
     }
 
-    // 콜백: 현재 비트 업데이트 (스크롤 동기화용)
+    // Callback: update current beat (for scroll sync)
     this.onBeatUpdate(currentBeat);
 
-    // 재생 종료 체크
+    // Check for end of playback
     if (currentBeat > this.maxBeat + 4) {
       this.stop();
       this.onEnd();
@@ -199,10 +199,10 @@ export class EditorPlayback {
     this.animationFrameId = requestAnimationFrame(this.tick);
   };
 
-  /** 재생 속도 변경 (재생 중에도 가능) */
+  /** Change playback speed (can be called while playing) */
   setSpeed(speed: number): void {
     if (this.isPlaying) {
-      // 현재 비트 위치를 기준으로 타이밍을 재설정
+      // Recalculate timing based on current beat position
       const elapsed = (this.player.getContextTime() - this.playbackStartTime) * this.speed;
       const currentAbsTime = this.startBeatTime + elapsed;
       this.startBeatTime = currentAbsTime;
@@ -211,7 +211,7 @@ export class EditorPlayback {
     this.speed = speed;
   }
 
-  /** 리소스 해제 */
+  /** Release resources */
   dispose(): void {
     this.stop();
   }

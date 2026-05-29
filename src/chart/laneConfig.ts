@@ -5,7 +5,7 @@
 
 import type { KeyMode } from './NoteChartViewer';
 
-/** 레인 설정 */
+/** Lane configuration */
 export interface LaneConfig {
   id: string;
   x: number;
@@ -16,7 +16,7 @@ export interface LaneConfig {
   originalIndex: number;
 }
 
-/** 키 모드별 레인 설정 생성 */
+/** Generate lane configuration for a given key mode */
 export function generateLaneConfig(keyMode: KeyMode, bgmChannelCount?: number): LaneConfig[] {
   const LANE_CONFIGS: Record<
     KeyMode,
@@ -234,12 +234,12 @@ export function generateLaneConfig(keyMode: KeyMode, bgmChannelCount?: number): 
   return lanes;
 }
 
-/** 키 모드의 레인 ID 목록 반환 (BGM 레인 제외 — 플레이어블 레인만) */
+/** Return lane ID list for a key mode (excluding BGM lanes — playable lanes only) */
 export function getLaneIds(keyMode: KeyMode): string[] {
   return generateLaneConfig(keyMode).filter((l) => !l.isBgm).map((l) => l.id);
 }
 
-/** DP 모드의 1P/2P 구분 인덱스 반환 (구분선 위치). SP 모드는 null. */
+/** Return the 1P/2P split index for DP modes (divider position). Returns null for SP modes. */
 export function getDpSplitIndex(keyMode: KeyMode): number | null {
   switch (keyMode) {
     case '10K': return 6;  // SC,1-5 | 6-10,SC2
@@ -250,11 +250,11 @@ export function getDpSplitIndex(keyMode: KeyMode): number | null {
   }
 }
 
-/** 레인 배경색 계산 (레인 노트 색상에 따라 교차 배경 생성) */
+/** Calculate lane background color (alternating background derived from lane note color) */
 export function getLaneBackground(lane: LaneConfig): string {
   if (lane.isBgm) return '#1a1a1a';
   if (lane.isScratch) return '#2a1a2a';
-  // 레인 색상을 base에 12% 블렌딩하여 IIDX 스타일 교차 배경
+  // Blend lane color into base at 12% to produce IIDX-style alternating background
   const base = [0x1a, 0x1a, 0x30];
   const laneRgb = [
     parseInt(lane.color.slice(1, 3), 16),
@@ -265,5 +265,5 @@ export function getLaneBackground(lane: LaneConfig): string {
   const r = Math.round(base[0] + (laneRgb[0] - base[0]) * t);
   const g = Math.round(base[1] + (laneRgb[1] - base[1]) * t);
   const b = Math.round(base[2] + (laneRgb[2] - base[2]) * t);
-  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '00')}${b.toString(16).padStart(2, '0')}`;
 }

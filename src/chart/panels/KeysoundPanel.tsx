@@ -1,9 +1,9 @@
 /**
  * KeysoundPanel
  *
- * 차트 에디터용 키음 피커 패널
- * WAV 목록, 검색, 클릭 선택, 재생 미리듣기,
- * 사용 횟수 배지, 우클릭 컨텍스트 메뉴, 하이라이트 토글
+ * Keysound picker panel for the chart editor.
+ * WAV list, search, click-to-select, playback preview,
+ * usage count badge, right-click context menu, highlight toggle.
  */
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
@@ -12,35 +12,35 @@ import { cn } from '../../utils';
 import { useI18n } from '../../i18n';
 
 interface KeysoundPanelProps {
-  /** WAV 정의 목록 (ID → 파일명) */
+  /** WAV definition list (ID → filename) */
   keysounds: Record<string, string>;
-  /** 현재 선택된 키음 ID */
+  /** Currently selected keysound ID */
   currentKeysound: string;
-  /** 키음 선택 콜백 */
+  /** Keysound selection callback */
   onSelect: (keysoundId: string) => void;
-  /** 키음 미리듣기 콜백 */
+  /** Keysound preview playback callback */
   onPreview?: (keysoundId: string) => void;
-  /** 오디오 로드 완료 여부 */
+  /** Whether audio has finished loading */
   isAudioReady?: boolean;
-  /** 오디오 로딩 중 여부 */
+  /** Whether audio is currently loading */
   isAudioLoading?: boolean;
-  /** 업로드 버튼 클릭 콜백 */
+  /** Upload button click callback */
   onUploadClick?: () => void;
-  /** 키음별 사용 횟수 (ID → count) */
+  /** Per-keysound usage counts (ID → count) */
   keysoundUsageCounts?: Record<string, number>;
-  /** 이 키음을 사용하는 노트 찾기 콜백 */
+  /** Callback to find notes using this keysound */
   onFindNotes?: (keysoundId: string) => void;
-  /** 키음 일괄 교체 시작 콜백 */
+  /** Callback to start bulk-replacing this keysound */
   onReplaceKeysound?: (keysoundId: string) => void;
-  /** 미사용 키음 삭제 콜백 */
+  /** Callback to delete an unused keysound */
   onDeleteUnused?: (keysoundId: string) => void;
-  /** 현재 하이라이트 중인 키음 */
+  /** Currently highlighted keysound */
   highlightKeysound?: string | null;
-  /** 키음 하이라이트 토글 콜백 */
+  /** Keysound highlight toggle callback */
   onHighlightKeysound?: (keysoundId: string | null) => void;
-  /** 이 키음의 BGM 노트만 선택 콜백 */
+  /** Callback to select only the BGM notes for this keysound */
   onSelectBgmNotes?: (keysoundId: string) => void;
-  /** 추가 클래스명 */
+  /** Additional CSS class name */
   className?: string;
 }
 
@@ -144,7 +144,7 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
     [onFindNotes, onReplaceKeysound, onDeleteUnused, onHighlightKeysound, onSelectBgmNotes]
   );
 
-  // 외부 클릭 시 컨텍스트 메뉴 닫기
+  // Close context menu on outside click
   useEffect(() => {
     if (!contextMenu) return;
     const handleClick = (e: MouseEvent) => {
@@ -186,7 +186,7 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {/* 무음 (No Sound) 옵션 - 항상 상단에 표시 */}
+        {/* Silent (No Sound) option — always shown at the top */}
         {(!searchQuery || '00'.includes(searchQuery.toLowerCase()) || '무음'.includes(searchQuery) || 'no sound'.includes(searchQuery.toLowerCase())) && (
           <div className="border-b">
             <button
@@ -266,7 +266,7 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
         {searchQuery && ` ${t('panels.keysound.filteredSummary', { count: entries.length })}`}
       </div>
 
-      {/* 컨텍스트 메뉴 */}
+      {/* Context menu */}
       {contextMenu && (
         <div
           ref={contextMenuRef}

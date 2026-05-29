@@ -1,7 +1,7 @@
 /**
- * useFullscreen — fullscreen 요청 / 이탈 + 상태 동기화 훅
+ * useFullscreen — fullscreen request / exit + state sync hook
  *
- * NoteChartViewer.tsx 에서 추출된 풀스크린 로직.
+ * Fullscreen logic extracted from NoteChartViewer.tsx.
  */
 import { useCallback, useEffect, useState } from 'react';
 import type { RefObject } from 'react';
@@ -14,7 +14,7 @@ export interface UseFullscreenReturn {
 export function useFullscreen(): UseFullscreenReturn {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // ESC 키 등 브라우저 네이티브 이벤트로 fullscreen 이 해제될 때 동기화
+  // Sync state when fullscreen is exited via native browser events such as the ESC key
   useEffect(() => {
     const handleChange = () => {
       setIsFullscreen(!!document.fullscreenElement);

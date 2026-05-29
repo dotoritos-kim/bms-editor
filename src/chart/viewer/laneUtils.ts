@@ -6,14 +6,14 @@
 import type { LaneConfig } from '../laneConfig';
 import { mulberry32 } from './renderers/viewerRenderUtils';
 
-/** 레인 옵션 */
+/** Lane option */
 export type LaneOption = 'normal' | 'mirror' | 'random' | 'r-random' | 's-random';
 
-/** 레인 옵션 적용 */
+/** Apply lane option */
 export function applyLaneOption(lanes: LaneConfig[], option: LaneOption, seed?: number): LaneConfig[] {
   if (option === 'normal') return lanes;
 
-  // 스크래치/FZ 레인 분리 (playableLanes만 셔플)
+  // Separate scratch/FZ lanes (only shuffle playable lanes)
   const playableLanes = lanes.filter(l => !l.isScratch && !l.isBgm && l.id !== 'FZ' && l.id !== 'FZ2');
 
   let arrangedLanes: LaneConfig[];
@@ -39,7 +39,7 @@ export function applyLaneOption(lanes: LaneConfig[], option: LaneOption, seed?: 
       arrangedLanes = playableLanes;
   }
 
-  // 원래 위치에 스크래치 레인 복원
+  // Restore scratch lanes to their original positions
   const result: LaneConfig[] = [];
   let playableIndex = 0;
 
@@ -52,7 +52,7 @@ export function applyLaneOption(lanes: LaneConfig[], option: LaneOption, seed?: 
     }
   }
 
-  // x 좌표 재계산
+  // Recalculate x coordinates
   let x = 0;
   return result.map(lane => {
     const updated = { ...lane, x };

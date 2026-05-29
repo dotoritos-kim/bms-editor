@@ -1,14 +1,14 @@
 /**
  * HeaderEditorPanel
  *
- * BMS 차트 헤더 편집 패널
- * 탭: 기본 | 커스텀 | WAV | BMP | Raw
- * - 기본: title/artist/genre/bpm 등 표준 헤더 + player/backbmp/lntype/lnobj
- * - 커스텀: custom Map (임의 #KEY VALUE) 추가/편집/삭제
- * - WAV: #WAVxx 정의 편집
- * - BMP: #BMPxx 정의 편집
- * - Raw: 전체 헤더 텍스트 직접 편집 후 일괄 적용
- * - 검색: 각 탭 상단 필터
+ * BMS chart header editing panel
+ * Tabs: Basic | Custom | WAV | BMP | Raw
+ * - Basic: standard header fields (title/artist/genre/bpm etc.) + player/backbmp/lntype/lnobj
+ * - Custom: add/edit/delete arbitrary #KEY VALUE entries (custom Map)
+ * - WAV: edit #WAVxx definitions
+ * - BMP: edit #BMPxx definitions
+ * - Raw: directly edit the full header text and apply all at once
+ * - Search: filter bar at the top of each tab
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
@@ -168,7 +168,7 @@ function MapEditor({
   addKey, addValue, onAddKeyChange, onAddValueChange, onAdd,
 }: MapEditorProps) {
   const { t } = useI18n();
-  // WAV/BMP 키는 BMS 스펙상 2자 이상 (예: "01", "ZZ")
+  // WAV/BMP keys must be at least 2 characters per BMS spec (e.g. "01", "ZZ")
   const minKeyLen = keyPrefix ? 2 : 1;
   const isKeyValid = addKey.trim().length >= minKeyLen;
   const q = search.toLowerCase();
@@ -335,7 +335,7 @@ export const HeaderEditorPanel = React.memo(function HeaderEditorPanel({
   return (
     <div className={cn('flex flex-col h-full', className)}>
 
-      {/* ── 탭 바 ── */}
+      {/* ── Tab bar ── */}
       <div className="flex border-b shrink-0">
         {TABS.map((t) => (
           <button
@@ -356,7 +356,7 @@ export const HeaderEditorPanel = React.memo(function HeaderEditorPanel({
         ))}
       </div>
 
-      {/* ── 검색 바 (Raw 탭 제외) ── */}
+      {/* ── Search bar (excluded on Raw tab) ── */}
       {activeTab !== 'raw' && (
         <div className="px-2 py-1.5 border-b shrink-0">
           <input
@@ -369,7 +369,7 @@ export const HeaderEditorPanel = React.memo(function HeaderEditorPanel({
         </div>
       )}
 
-      {/* ── Raw 탭: flex-col, textarea fills remaining space ── */}
+      {/* ── Raw tab: flex-col, textarea fills remaining space ── */}
       {activeTab === 'raw' && (
         <div className="flex-1 min-h-0 flex flex-col p-2 gap-2">
           <p className="text-xs text-muted-foreground shrink-0">
@@ -393,11 +393,11 @@ export const HeaderEditorPanel = React.memo(function HeaderEditorPanel({
         </div>
       )}
 
-      {/* ── 나머지 탭: 스크롤 가능한 컨텐츠 영역 ── */}
+      {/* ── Other tabs: scrollable content area ── */}
       {activeTab !== 'raw' && (
         <div className="flex-1 min-h-0 overflow-y-auto">
 
-          {/* 기본 탭 */}
+          {/* Basic tab */}
           {activeTab === 'basic' && (
             <div className="p-3 space-y-3">
               {filteredBasic.length === 0 && (
@@ -455,7 +455,7 @@ export const HeaderEditorPanel = React.memo(function HeaderEditorPanel({
             </div>
           )}
 
-          {/* 커스텀 탭 */}
+          {/* Custom tab */}
           {activeTab === 'custom' && (
             <MapEditor
               entries={chart.headers.custom}
@@ -475,7 +475,7 @@ export const HeaderEditorPanel = React.memo(function HeaderEditorPanel({
             />
           )}
 
-          {/* WAV 탭 */}
+          {/* WAV tab */}
           {activeTab === 'wav' && (
             <MapEditor
               entries={chart.headers.wav}
@@ -496,7 +496,7 @@ export const HeaderEditorPanel = React.memo(function HeaderEditorPanel({
             />
           )}
 
-          {/* BMP 탭 */}
+          {/* BMP tab */}
           {activeTab === 'bmp' && (
             <MapEditor
               entries={chart.headers.bmp}

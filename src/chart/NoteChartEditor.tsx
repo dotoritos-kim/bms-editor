@@ -1,13 +1,13 @@
 /**
  * NoteChartEditor Component
  *
- * BMS 노트 차트를 편집 가능하게 표시하는 컴포넌트
- * 모듈 구조:
- *   editor/types.ts         — 타입, 상수, 인터페이스
- *   editor/editorUtils.ts   — 순수 유틸리티 함수 (스냅, 색상, 변환)
- *   editor/gridRenderers.tsx — 레인/마디선/BPM/STOP 렌더러
- *   editor/noteRenderers.tsx — 노트/호버/고스트/이펙트 렌더러
- *   editor/EditorToolbar.tsx — 에디터 툴바
+ * Component that displays a BMS note chart in editable form.
+ * Module structure:
+ *   editor/types.ts         — types, constants, interfaces
+ *   editor/editorUtils.ts   — pure utility functions (snap, color, conversion)
+ *   editor/gridRenderers.tsx — lane/measure line/BPM/STOP renderers
+ *   editor/noteRenderers.tsx — note/hover/ghost/effect renderers
+ *   editor/EditorToolbar.tsx — editor toolbar
  */
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
@@ -28,7 +28,7 @@ import {
   type LayerKey,
 } from './editor/types';
 
-/** 키모드별 기본 beatScale (px/beat) */
+/** Default beatScale per key mode (px/beat) */
 function defaultBeatScaleForKeyMode(keyMode: string): number {
   if (['4K', '5K', '6K', '7K'].includes(keyMode)) return 20;
   if (['8K', '9K', '10K'].includes(keyMode)) return 15;
@@ -63,7 +63,7 @@ export type {
   LayerConfig,
 } from './editor/types';
 
-/** 에디터 캔버스 내부 컴포넌트 */
+/** Internal editor canvas component */
 function EditorCanvas({
   notes,
   keyMode,
@@ -149,7 +149,7 @@ function EditorCanvas({
   const CONTENT_PADDING = 85;
   const contentWidth = totalWidth + CONTENT_PADDING;
 
-  // 외부 스크롤 동기화
+  // Sync external scroll position
   const prevExternalScrollRef = useRef(externalScrollBeat);
   const isExternalUpdateRef = useRef(false);
   useEffect(() => {
@@ -167,7 +167,7 @@ function EditorCanvas({
     onScrollChange?.(scrollBeat);
   }, [scrollBeat, onScrollChange]);
 
-  // 마우스 휠 스크롤 + Ctrl+Wheel 줌
+  // Mouse wheel scroll + Ctrl+Wheel zoom
   useEffect(() => {
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -178,7 +178,7 @@ function EditorCanvas({
       if (e.ctrlKey || e.metaKey) {
         const factor = e.deltaY > 0 ? (1 / 1.15) : 1.15;
         const newScale = Math.max(2, Math.min(200, Math.round(beatScaleRef.current * factor)));
-        // 커서 고정 줌: 마우스 위치의 beat를 유지
+        // Anchor zoom to cursor: keep the beat under the mouse fixed
         const rect = gl.domElement.getBoundingClientRect();
         const cursorYFraction = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
         const oldViewportBeats = viewportBeatsRef.current;
@@ -212,7 +212,7 @@ function EditorCanvas({
     gl.domElement.style.cursor = cursorMap[activeTool] || 'default';
   }, [activeTool, isDragging, gl.domElement]);
 
-  // 키보드 네비게이션
+  // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       switch (e.key) {
@@ -236,7 +236,7 @@ function EditorCanvas({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [totalBeats]);
 
-  // 카메라 업데이트
+  // Camera update
   const contentWidthRef = useRef(contentWidth);
   contentWidthRef.current = contentWidth;
 
@@ -256,19 +256,19 @@ function EditorCanvas({
     const effectiveScrollBeat = scrollBeatImperativeRef?.current ?? scrollBeatRef.current;
     const targetY = effectiveScrollBeat * beatScaleRef.current + viewportHeight / 2;
     camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.15);
-    // 초기 beatScale 한 번 보고 (mount 후 첫 프레임)
+    // Report initial beatScale once (first frame after mount)
     if (!initialBeatScaleReportedRef.current) {
       initialBeatScaleReportedRef.current = true;
       onBeatScaleChange?.(beatScaleRef.current);
     }
-    // rAF 디바운스: pendingBeatScaleRef가 있으면 onBeatScaleChange 호출 후 클리어
+    // rAF debounce: if pendingBeatScaleRef is set, call onBeatScaleChange then clear
     if (pendingBeatScaleRef.current !== null) {
       onBeatScaleChange?.(pendingBeatScaleRef.current);
       pendingBeatScaleRef.current = null;
     }
   });
 
-  // 좌표 변환
+  // Coordinate conversion
   const _screenVec = useMemo(() => new THREE.Vector3(), []);
   const screenToWorld = useCallback(
     (screenX: number, screenY: number) => {
@@ -303,7 +303,7 @@ function EditorCanvas({
         if (relativeX >= lane.x && relativeX < lane.x + lane.width) { column = lane.id; break; }
       }
       const rawBeat = worldY / beatScale;
-      // Snap 3단계: snapEnabled OFF → free, Shift held → free, otherwise → grid snap
+      // Snap 3-stage: snapEnabled OFF → free, Shift held → free, otherwise → grid snap
       const beat = (snapEnabled && !shiftHeldRef.current) ? snapBeatToGrid(rawBeat, gridSnap) : rawBeat;
       return { column, beat };
     },
@@ -324,7 +324,7 @@ function EditorCanvas({
     return () => { if (coordConverterRef) coordConverterRef.current = null; };
   }, [coordConverterRef, screenToWorld, worldToLaneBeat]);
 
-  // size와 totalBeats를 ref로 유지 (fitToChart에서 최신값 접근)
+  // Keep size and totalBeats in refs for latest-value access in fitToChart
   const sizeRef = useRef(size);
   sizeRef.current = size;
   const totalBeatsZoomRef = useRef(totalBeats);
@@ -378,7 +378,7 @@ function EditorCanvas({
     [lanes, offsetX, beatScale]
   );
 
-  // 히트 판정
+  // Hit detection
   const findNoteAtPosition = useCallback(
     (worldX: number, worldY: number): EditableBMSNote | null => {
       const { column, rawBeat } = worldToLaneRawBeat(worldX, worldY);
@@ -438,7 +438,7 @@ function EditorCanvas({
     [notes, lanes, offsetX, beatScale]
   );
 
-  // 이벤트 핸들러
+  // Event handlers
   const handlePointerMove = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
       const { clientX, clientY } = e.nativeEvent;
@@ -566,7 +566,7 @@ function EditorCanvas({
             setLnDragCreate({ startBeat: beat, column, currentEndBeat: beat + Math.max(4 / gridSnap, 0.25) });
             setDragStart({ x: world.x, y: world.y });
           } else {
-            // measure/fraction은 store.addNote에서 tick 기반으로 재계산됨
+            // measure/fraction are recalculated tick-based in store.addNote
             const noteType: NoteType = isBgm ? 'bgm' : (selectedNoteType as NoteType);
             const bgmChannel = isBgmLaneId(column) ? bgmLaneIdToChannel(column) : undefined;
             onNoteAdd({
@@ -787,7 +787,7 @@ function EditorCanvas({
   );
 }
 
-/** 메인 NoteChartEditor 컴포넌트 */
+/** Main NoteChartEditor component */
 export const NoteChartEditor = React.memo(function NoteChartEditor({
   notes, keyMode, totalBeats, height = 600, beatScale = 20, className,
   activeTool, gridSnap, snapEnabled, gridSnapOverrides, layerConfig, selectedNotes, selectedNoteType, currentKeysound,

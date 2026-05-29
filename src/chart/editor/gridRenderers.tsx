@@ -12,7 +12,7 @@ import { getLaneBackground, getDpSplitIndex, type LaneConfig } from '../laneConf
 import type { GridSnap } from './types';
 import { _dummy, _color } from './editorUtils';
 
-// 마디선 색상 상수
+// Measure line color constants
 const MEASURE_LINE_COLOR = new THREE.Color('#6666aa');
 const BEAT_LINE_COLOR = new THREE.Color('#444466');
 const GRID_LINE_COLOR = new THREE.Color('#2a2a44');
@@ -92,7 +92,7 @@ export const TextLabels = React.memo(function TextLabels({
   );
 });
 
-/** 현재 마디 하이라이트 — scrollBeat(뷰포트 하단) 기준으로 해당 마디 전체를 반투명 밴드로 표시 */
+/** Current measure highlight — renders a translucent band over the full measure containing scrollBeat (viewport bottom). */
 export const CurrentMeasureHighlight = React.memo(function CurrentMeasureHighlight({
   currentBeat,
   totalWidth,
@@ -127,12 +127,12 @@ export const CurrentMeasureHighlight = React.memo(function CurrentMeasureHighlig
         <planeGeometry args={[totalWidth, height]} />
         <meshBasicMaterial color="#4488ff" opacity={0.1} transparent depthWrite={false} />
       </mesh>
-      {/* 상단 테두리 */}
+      {/* Top border */}
       <mesh position={[0, startBeat * beatScale + height, -4.4]} frustumCulled={false}>
         <planeGeometry args={[totalWidth, 2]} />
         <meshBasicMaterial color="#6699ff" opacity={0.7} transparent depthWrite={false} />
       </mesh>
-      {/* 하단 테두리 */}
+      {/* Bottom border */}
       <mesh position={[0, startBeat * beatScale, -4.4]} frustumCulled={false}>
         <planeGeometry args={[totalWidth, 2]} />
         <meshBasicMaterial color="#6699ff" opacity={0.4} transparent depthWrite={false} />
@@ -162,7 +162,7 @@ export const TextBatchStrip = React.memo(function TextBatchStrip({
   return <TextLabels labels={labels} x={x} z={z} color={color} align={align} worldHeight={LABEL_WORLD_HEIGHT} />;
 });
 
-/** 레인 배경 렌더러 (InstancedMesh 1 draw call + batched dividers LineSegments) */
+/** Lane background renderer (InstancedMesh 1 draw call + batched dividers LineSegments) */
 const MAX_LANE_INSTANCES = 50;
 
 export const LanesRenderer = React.memo(function LanesRenderer({
@@ -244,7 +244,7 @@ export const LanesRenderer = React.memo(function LanesRenderer({
   );
 });
 
-/** 마디선 렌더러 (batched LineSegments + viewport culling with large buffer) */
+/** Measure line renderer (batched LineSegments + viewport culling with large buffer) */
 export const MeasureLinesRenderer = React.memo(function MeasureLinesRenderer({
   totalBeats,
   beatScale,
@@ -300,11 +300,11 @@ export const MeasureLinesRenderer = React.memo(function MeasureLinesRenderer({
       colors.push(color.r, color.g, color.b, color.r, color.g, color.b);
     };
 
-    // 박자표 인식 마디/비트/그리드선 렌더링
-    // 마디별 비트 수를 구해서 정확한 위치에 선을 그림
+    // Render measure/beat/grid lines with time-signature awareness
+    // Computes beats per measure to draw lines at exact positions
     let measureBeat = 0;
     let measure = 0;
-    // 먼저 minBeat 이전까지 skip
+    // Skip ahead to the measure containing minBeat
     while (measureBeat < minBeat && measure < 9999) {
       const size = timeSignatures?.get(measure) ?? 1.0;
       const beatsInMeasure = 4 * size;
@@ -312,24 +312,24 @@ export const MeasureLinesRenderer = React.memo(function MeasureLinesRenderer({
       measureBeat += beatsInMeasure;
       measure++;
     }
-    // 마디별로 선 생성
+    // Generate lines per measure
     const startMeasure = measure;
     let currentBeat = measureBeat;
     while (currentBeat <= maxBeat && measure < 9999) {
       const size = timeSignatures?.get(measure) ?? 1.0;
       const beatsInMeasure = 4 * size;
 
-      // 마디선
+      // Measure line
       addLine(currentBeat * beatScale, MEASURE_LINE_COLOR);
 
-      // 비트선 (1비트 간격, 마디선 제외)
+      // Beat lines (1-beat interval, excluding measure lines)
       for (let b = 1; b < beatsInMeasure; b++) {
         const beatPos = currentBeat + b;
         if (beatPos > maxBeat) break;
         addLine(beatPos * beatScale, BEAT_LINE_COLOR);
       }
 
-      // 그리드선 (마디별 gridSnap override 지원, 인덱스 기반으로 부동소수점 누적 오차 방지)
+      // Grid lines (per-measure gridSnap override supported; index-based to avoid floating-point accumulation errors)
       const effectiveSnap = gridSnapOverrides?.get(measure) ?? gridSnap;
       for (let i = 1; i < effectiveSnap; i++) {
         const b = (i * beatsInMeasure) / effectiveSnap;
@@ -355,10 +355,10 @@ export const MeasureLinesRenderer = React.memo(function MeasureLinesRenderer({
     computedRangeRef.current = { min: minBeat, max: maxBeat, beatScale, gridSnap, halfWidth };
   }, [totalBeats, beatScale, gridSnap, halfWidth, minBeat, maxBeat]);
 
-  // 마디 번호 - viewport 내만 (박자표 인식)
+  // Measure numbers — viewport only (time-signature aware)
   const measureLabels = useMemo(() => {
     const labels: { y: number; label: string }[] = [];
-    // 저줌 시 draw call 감소: viewport에 최대 ~16개 레이블만 표시
+    // Reduce draw calls at low zoom: show at most ~16 labels in the viewport
     const labelStep = Math.max(1, Math.ceil(viewportBeats / 16));
     let beat = 0;
     let m = 0;

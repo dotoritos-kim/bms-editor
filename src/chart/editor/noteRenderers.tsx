@@ -22,7 +22,7 @@ import type { CustomNoteColors, LayerConfig, LayerKey } from './types';
 import { useNoteHeight, getLaneColorHex, getNoteColorHex, getSelectionColorHex, getBgmLaneId, isBgmLaneId, _dummy, _color } from './editorUtils';
 import { TextLabels } from './gridRenderers';
 
-/** 노트 렌더러 (InstancedMesh 기반, viewport culling + dirty check) */
+/** Note renderer (InstancedMesh-based, viewport culling + dirty check) */
 export const NotesRenderer = React.memo(function NotesRenderer({
   notes,
   lanes,
@@ -52,7 +52,7 @@ export const NotesRenderer = React.memo(function NotesRenderer({
   wavDurations?: Map<string, number>;
   /** BPM at start (for duration→beats conversion) */
   baseBpm?: number;
-  /** 커스텀 노트 색상 오버라이드 */
+  /** Custom note color overrides */
   customColors?: CustomNoteColors;
 }) {
   const noteHeight = useNoteHeight();
@@ -68,7 +68,7 @@ export const NotesRenderer = React.memo(function NotesRenderer({
     [lanes]
   );
 
-  // beat 오름차순 정렬 — notes 참조가 바뀔 때만 재정렬 (O(N log N) once → O(log N) per frame)
+  // Sort ascending by beat — re-sorts only when the notes reference changes (O(N log N) once → O(log N) per frame)
   const sortedNotes = useMemo(
     () => [...notes].sort((a, b) => a.beat - b.beat),
     [notes]
@@ -121,7 +121,7 @@ export const NotesRenderer = React.memo(function NotesRenderer({
     let layerMarkerCount = 0;
     let activeFlashCount = 0;
 
-    // 이진탐색으로 viewport 범위만 순회 (LN은 최대 64 beat 룩백으로 커버)
+    // Binary search to iterate only the viewport range (long notes covered by up to 64-beat look-back)
     const LN_LOOK_BACK = 64;
     let lo = 0, hi = sortedNotes.length;
     while (lo < hi) { const mid = (lo + hi) >> 1; if (sortedNotes[mid].beat < minBeat - LN_LOOK_BACK) lo = mid + 1; else hi = mid; }
@@ -140,7 +140,7 @@ export const NotesRenderer = React.memo(function NotesRenderer({
       if (layerSettings && !layerSettings.visible) continue;
 
       const noteMaxBeat = note.endBeat ?? note.beat;
-      if (noteMaxBeat < minBeat) continue; // LN이 룩백 구간 시작 전에 끝난 경우
+      if (noteMaxBeat < minBeat) continue; // LN ends before the look-back window starts
 
       const laneId = note.noteType === 'bgm' ? getBgmLaneId(note) : (note.column || '');
       const lane = laneMap.get(laneId);
@@ -156,7 +156,7 @@ export const NotesRenderer = React.memo(function NotesRenderer({
       const colorHex = getNoteColorHex(note, laneColorHex, false, isNoteHighlighted, customColors);
       const layerOpacity = layerSettings?.opacity ?? 1.0;
 
-      // 노트 본체
+      // Note body
       _dummy.position.set(x, y, 0);
       _dummy.scale.set(lane.width - NOTE_PADDING * 2, noteHeight, 1);
       _dummy.updateMatrix();
@@ -165,7 +165,7 @@ export const NotesRenderer = React.memo(function NotesRenderer({
       if (layerOpacity < 1.0) _color.multiplyScalar(layerOpacity);
       notesMesh.setColorAt(noteCount, _color);
 
-      // 선택 하이라이트
+      // Selection highlight
       if (selectedNotes.has(note.id) && selectionCount < MAX_VISIBLE_SELECTIONS) {
         _dummy.position.set(x, y, 1);
         _dummy.scale.set(lane.width, noteHeight + 2, 1);
@@ -176,7 +176,7 @@ export const NotesRenderer = React.memo(function NotesRenderer({
         selectionCount++;
       }
 
-      // 롱노트 바디
+      // Long note body
       if (note.endBeat !== undefined && longNoteCount < MAX_VISIBLE_LONGNOTE_BODIES) {
         const endY = note.endBeat * beatScale + noteHeight / 2;
         const bodyY = (y + endY) / 2;
@@ -203,7 +203,7 @@ export const NotesRenderer = React.memo(function NotesRenderer({
         }
       }
 
-      // 멀티 키음 레이어 마커
+      // Multi-keysound layer marker
       if (note.additionalKeysounds && note.additionalKeysounds.length > 0 && layerMarkerCount < MAX_VISIBLE_LAYER_MARKERS) {
         _dummy.position.set(x + lane.width / 2 - 3, y, 1.5);
         _dummy.scale.set(5, 5, 1);
@@ -216,7 +216,7 @@ export const NotesRenderer = React.memo(function NotesRenderer({
         _dummy.rotation.z = 0;
       }
 
-      // 판정선 근처 활성 노트 플래시
+      // Active note flash near the judgment line
       if (activeFlashMesh && playBeat !== undefined && activeFlashCount < MAX_ACTIVE_FLASH) {
         const dist = Math.abs(note.beat - playBeat);
         if (dist < 0.5) {
@@ -262,7 +262,7 @@ export const NotesRenderer = React.memo(function NotesRenderer({
     if (bgmTailMesh && wavDurations && wavDurations.size > 0) {
       let tailCount = 0;
       const MAX_TAILS = 200;
-      // BGM tail 이진탐색 (WAV duration 룩백 20 beat)
+      // Binary search for BGM tails (20-beat look-back for WAV duration)
       const BGM_LOOK_BACK = 20;
       let bgmLo = 0, bgmHi = sortedNotes.length;
       while (bgmLo < bgmHi) { const mid = (bgmLo + bgmHi) >> 1; if (sortedNotes[mid].beat < minBeat - BGM_LOOK_BACK) bgmLo = mid + 1; else bgmHi = mid; }
@@ -306,7 +306,7 @@ export const NotesRenderer = React.memo(function NotesRenderer({
     }
   });
 
-  // 초기화: 기본 색상 설정
+  // Initialization: set default colors
   useEffect(() => {
     const meshConfigs: [React.RefObject<THREE.InstancedMesh | null>, number][] = [
       [notesMeshRef, MAX_VISIBLE_EDITOR_NOTES],
@@ -397,7 +397,7 @@ export const NotesRenderer = React.memo(function NotesRenderer({
   );
 });
 
-/** BGM 노트에 WAV ID 텍스트 라벨을 표시하는 서브 컴포넌트 */
+/** Sub-component that renders WAV ID text labels on BGM notes. */
 const BgmLabels = React.memo(function BgmLabels({
   notes,
   lanes,
@@ -420,7 +420,7 @@ const BgmLabels = React.memo(function BgmLabels({
 
   const labels = useMemo(() => {
     if (!bgmVisible || bgmLanes.length === 0) return [];
-    // 저줌 시 레이블이 읽기 불가하고 draw call만 증가 → 숨김
+    // At low zoom labels become unreadable and only increase draw calls — hide them
     if (beatScale < 15) return [];
 
     const MAX_LABELS = 50;
@@ -445,7 +445,7 @@ const BgmLabels = React.memo(function BgmLabels({
     return result;
   }, [notes, bgmLanes, bgmVisible, beatScale, scrollBeat, viewportBeats]);
 
-  // byLane을 useMemo로 메모이제이션 — labels가 바뀌지 않으면 TextLabels가 재렌더링하지 않음
+  // Memoize byLane — TextLabels won't re-render unless labels changes
   const byLane = useMemo(() => {
     const map = new Map<string, { y: number; text: string }[]>();
     for (const l of labels) {
@@ -479,7 +479,7 @@ const BgmLabels = React.memo(function BgmLabels({
   );
 });
 
-/** 호버 미리보기 */
+/** Hover preview */
 export const HoverPreview = React.memo(function HoverPreview({
   beat,
   column,
@@ -499,7 +499,7 @@ export const HoverPreview = React.memo(function HoverPreview({
 }) {
   const noteHeight = useNoteHeight();
   const lane = lanes.find((l) => l.id === column);
-  // hooks는 early return 전에 모두 선언 (rules of hooks)
+  // All hooks must be declared before any early return (rules of hooks)
   const w = (lane?.width ?? 0) - NOTE_PADDING * 2;
   const silentEdgeGeom = useMemo(() => new THREE.PlaneGeometry(w, noteHeight), [w, noteHeight]);
 
@@ -553,7 +553,7 @@ export const HoverPreview = React.memo(function HoverPreview({
   );
 });
 
-/** Rubber band 선택 사각형 */
+/** Rubber band selection rectangle */
 export const RubberBandRect = React.memo(function RubberBandRect({
   startX,
   startY,
@@ -580,7 +580,7 @@ export const RubberBandRect = React.memo(function RubberBandRect({
   );
 });
 
-/** 드래그 이동 시 고스트 노트 미리보기 (InstancedMesh 기반, 3 draw calls) */
+/** Ghost note preview during drag move (InstancedMesh-based, 3 draw calls) */
 const MAX_GHOST_NOTES = 500;
 const MAX_GHOST_LN_BODIES = 500;
 
@@ -702,7 +702,7 @@ export const DragGhostNotes = React.memo(function DragGhostNotes({
   );
 });
 
-/** 노트 통과 이펙트 (InstancedMesh 기반, 1 draw call) */
+/** Note pass effect (InstancedMesh-based, 1 draw call) */
 const MAX_NOTE_PASS_EFFECTS = 16;
 const NOTE_PASS_DURATION = 0.2;
 
@@ -824,7 +824,7 @@ export const NotePassEffect = React.memo(function NotePassEffect({
   );
 });
 
-/** 판정선 (재생 중 현재 위치를 표시하는 수평선) */
+/** Judgment line (horizontal line showing current playback position) */
 export const EditorJudgmentLine = React.memo(function EditorJudgmentLine({
   scrollBeatImperativeRef,
   beatScale,

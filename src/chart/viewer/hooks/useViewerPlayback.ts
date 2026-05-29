@@ -1,16 +1,16 @@
 /**
- * useViewerPlayback — 재생 엔진 훅
+ * useViewerPlayback — playback engine hook
  *
- * NoteChartViewer.tsx 에서 추출된 재생 관련 로직.
+ * Playback-related logic extracted from NoteChartViewer.tsx.
  *
- * 책임:
- * - isPlaying / playbackBeat 상태 관리
- * - Web Audio / HTML Audio / rAF 기반 3중 타이밍 fallback 애니메이션 루프
- * - togglePlayback (play/pause + seek-to-start 처리)
- * - 재생 시작/종료 시 scrollBeat 동기화 effect
+ * Responsibilities:
+ * - isPlaying / playbackBeat state management
+ * - Triple-timing fallback animation loop: Web Audio / HTML Audio / rAF
+ * - togglePlayback (play/pause + seek-to-start handling)
+ * - scrollBeat sync effect on playback start/stop
  *
- * hitEffect 관리(hitNotesRef, setHitNotesVersion)는 렌더링 책임이 있어
- * NoteChartViewer 에 그대로 두고, triggerKeysoundsInRange 콜백으로 주입받습니다.
+ * Hit effect management (hitNotesRef, setHitNotesVersion) stays in NoteChartViewer
+ * as it is a rendering concern; injected here via the triggerKeysoundsInRange callback.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MutableRefObject } from 'react';
@@ -29,36 +29,36 @@ export interface UseViewerPlaybackOptions {
   audioLoaded: boolean;
   keysoundReady: boolean;
   playbackSpeed: number;
-  /** 오디오 요소 ref (BGM) */
+  /** Audio element ref (BGM) */
   audioRef: MutableRefObject<HTMLAudioElement | null>;
-  /** 키사운드 플레이어 ref */
+  /** Keysound player ref */
   keysoundPlayerRef: MutableRefObject<KeysoundPlayer | null>;
-  /** timing 객체 ref (BPM 변화 있을 때 정밀 시간-비트 변환용) */
+  /** Timing object ref (used for precise time-to-beat conversion when BPM changes exist) */
   timingRef: MutableRefObject<Timing | null | undefined>;
-  /** 키사운드 활성화 여부 ref */
+  /** Keysound enabled state ref */
   keysoundEnabledRef: MutableRefObject<boolean>;
-  /** 키사운드 준비 여부 ref */
+  /** Keysound ready state ref */
   keysoundReadyRef: MutableRefObject<boolean>;
-  /** scrollBeat setter (재생 종료 시 동기화) */
+  /** scrollBeat setter (synced when playback stops) */
   setScrollBeat: (beat: number | ((prev: number) => number)) => void;
-  /** setPipelineLatency (레이턴시 측정값) */
+  /** setPipelineLatency (measured latency value) */
   setPipelineLatency: (v: number | null) => void;
   /** setSchedulingOverhead */
   setSchedulingOverhead: (v: number | null) => void;
   /**
-   * 애니메이션 루프 내에서 비트 범위 내 키사운드를 트리거하는 콜백.
-   * hit effect 상태(hitNotesRef, setHitNotesVersion)를 포함하므로
-   * NoteChartViewer 에서 구현하여 주입합니다.
+   * Callback that triggers keysounds within a beat range inside the animation loop.
+   * Includes hit effect state (hitNotesRef, setHitNotesVersion), so it is
+   * implemented in NoteChartViewer and injected here.
    */
   triggerKeysoundsInRange: (fromBeat: number, toBeat: number) => void;
   /**
-   * seek 시 현재 재생 중인 키사운드들을 offset과 함께 재생.
-   * (미구현 시 undefined 로 두면 seek 시 스킵됨)
+   * Plays currently active keysounds with their offset when seeking.
+   * (Leave undefined to skip keysound resumption on seek)
    */
   playActiveKeysoundsAtBeat?: (seekBeat: number, calculateTimeAtBeatFn: (beat: number) => number) => void;
   /**
-   * 외부에서 주입하는 playedNotesRef (useKeysoundTrigger가 소유).
-   * 주입 시 이 훅은 자체 ref 대신 주입된 ref를 사용합니다.
+   * Externally injected playedNotesRef (owned by useKeysoundTrigger).
+   * When provided, this hook uses the injected ref instead of its own internal ref.
    */
   playedNotesRef?: MutableRefObject<Set<string>>;
 }
@@ -68,14 +68,14 @@ export interface UseViewerPlaybackReturn {
   setIsPlaying: React.Dispatch<React.SetStateAction<boolean>>;
   playbackBeat: number;
   setPlaybackBeat: React.Dispatch<React.SetStateAction<number>>;
-  /** rAF handle ref (외부에서 cancel 필요 시 접근용) */
+  /** rAF handle ref (accessible externally if cancellation is needed) */
   animationRef: MutableRefObject<number | null>;
   playbackBeatRef: MutableRefObject<number>;
   lastPlayedBeatRef: MutableRefObject<number>;
   playedNotesRef: MutableRefObject<Set<string>>;
-  /** play/pause 토글 */
+  /** play/pause toggle */
   togglePlayback: () => Promise<void>;
-  /** BPM 변화를 고려한 beat→seconds 변환 */
+  /** beat→seconds conversion accounting for BPM changes */
   calculateTimeAtBeat: (targetBeat: number) => number;
 }
 
@@ -121,7 +121,7 @@ export function useViewerPlayback({
   useEffect(() => { triggerRef.current = triggerKeysoundsInRange; });
 
   // -------------------------------------------------------------------------
-  // calculateTimeAtBeat — BPM 변화 고려한 beat → seconds
+  // calculateTimeAtBeat — beat → seconds accounting for BPM changes
   // -------------------------------------------------------------------------
   const calculateTimeAtBeat = useCallback((targetBeat: number): number => {
     if (!bpmChanges || bpmChanges.length === 0) {

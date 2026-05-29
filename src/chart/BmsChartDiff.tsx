@@ -1,8 +1,8 @@
 /**
  * BmsChartDiff Component
  *
- * BMS 차트의 변경사항을 시각적으로 비교하는 컴포넌트
- * 사이드바 변경 목록 + 차트 뷰어 + 네비게이션 지원
+ * Component for visually comparing changes in a BMS chart.
+ * Sidebar change list + chart viewer + navigation support.
  */
 
 import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
@@ -28,24 +28,24 @@ export interface ChartInfo {
     longNotes: number;
     landmines: number;
   };
-  /** 헤더 정보 (선택적, diff 표시용) */
+  /** Header info (optional, for diff display) */
   headers?: Record<string, string>;
 }
 
 export interface BmsChartDiffProps {
-  /** 이전 버전 차트 정보 (null이면 새로 추가됨) */
+  /** Previous version chart info (null means newly added) */
   oldChart: ChartInfo | null;
-  /** 새 버전 차트 정보 (null이면 삭제됨) */
+  /** New version chart info (null means deleted) */
   newChart: ChartInfo | null;
-  /** 파일 경로 */
+  /** File path */
   filePath: string;
-  /** 추가 클래스명 */
+  /** Additional class name */
   className?: string;
-  /** 차트 뷰어 높이 (기본: 전체 높이 사용) */
+  /** Chart viewer height (default: full height) */
   viewerHeight?: number;
 }
 
-/** 마디별 변경 그룹 */
+/** Change group per measure */
 interface MeasureChange {
   measure: number;
   beat: number;
@@ -55,14 +55,14 @@ interface MeasureChange {
 }
 
 /**
- * 노트 비교를 위한 키 생성
+ * Generate a key for note comparison
  */
 function getNoteKey(note: BMSNote): string {
   return `${note.beat.toFixed(4)}-${note.column || 'bgm'}-${note.keysound}`;
 }
 
 /**
- * 두 차트의 노트 차이 계산 (수정 노트 감지 포함)
+ * Calculate note diff between two charts (including modified note detection)
  */
 function calculateNoteDiff(
   oldNotes: BMSNote[],
@@ -97,7 +97,7 @@ function calculateNoteDiff(
     }
   }
 
-  // 수정 감지: removed+added 중 같은 위치 or 같은 column+키음 매칭
+  // Modification detection: match removed+added by same position or same column+keysound
   const modified: BMSNote[] = [];
   const matchedRemovedIds = new Set<number>();
   const matchedAddedIds = new Set<number>();
@@ -129,14 +129,14 @@ function calculateNoteDiff(
 }
 
 /**
- * beat를 마디 번호로 변환 (4/4 박자 기준)
+ * Convert beat to measure number (assumes 4/4 time)
  */
 function beatToMeasure(beat: number): number {
   return Math.floor(beat / 4);
 }
 
 /**
- * BMS 차트 Diff 컴포넌트
+ * BMS chart diff component
  */
 export function BmsChartDiff({
   oldChart,
@@ -153,14 +153,14 @@ export function BmsChartDiff({
   const [splitScrollToBeat, setSplitScrollToBeat] = useState<number | undefined>(undefined);
   const sidebarRef = useRef<HTMLDivElement>(null);
 
-  // 변경 유형 결정
+  // Determine change type
   const changeType = useMemo(() => {
     if (!oldChart && newChart) return 'added';
     if (oldChart && !newChart) return 'deleted';
     return 'modified';
   }, [oldChart, newChart]);
 
-  // 노트 차이 계산
+  // Calculate note diff
   const noteDiff = useMemo(() => {
     if (changeType === 'added' && newChart) {
       return {
@@ -187,7 +187,7 @@ export function BmsChartDiff({
     return { added: [], removed: [], modified: [], unchanged: [] };
   }, [oldChart, newChart, changeType]);
 
-  // 통계 변화 계산
+  // Calculate stats diff
   const statsDiff = useMemo(() => {
     const oldStats = oldChart?.stats || { total: 0, scratch: 0, longNotes: 0, landmines: 0 };
     const newStats = newChart?.stats || { total: 0, scratch: 0, longNotes: 0, landmines: 0 };
@@ -199,7 +199,7 @@ export function BmsChartDiff({
     };
   }, [oldChart, newChart]);
 
-  // 헤더 변경 감지
+  // Detect header changes
   const headerChanges = useMemo(() => {
     if (!oldChart?.headers || !newChart?.headers) return [];
     const changes: Array<{ key: string; oldVal: string; newVal: string }> = [];
@@ -220,7 +220,7 @@ export function BmsChartDiff({
     return changes;
   }, [oldChart?.headers, newChart?.headers]);
 
-  // 마디별 변경 그룹 계산
+  // Calculate per-measure change groups
   const measureChanges = useMemo<MeasureChange[]>(() => {
     const measureMap = new Map<number, MeasureChange>();
 
@@ -239,16 +239,16 @@ export function BmsChartDiff({
     return Array.from(measureMap.values()).sort((a, b) => a.measure - b.measure);
   }, [noteDiff]);
 
-  // 전체 변경 수
+  // Total change count
   const totalChanges = noteDiff.added.length + noteDiff.removed.length + noteDiff.modified.length;
   const hasNoChanges = totalChanges === 0 && headerChanges.length === 0;
 
-  // 현재 표시할 차트
+  // Chart to display
   const displayChart = newChart || oldChart;
   const keyMode = displayChart?.keyMode || '7K';
   const totalBeats = displayChart?.totalBeats || 100;
 
-  // 첫 변경 위치로 자동 스크롤
+  // Auto-scroll to the first change position
   useEffect(() => {
     if (measureChanges.length > 0 && scrollToBeat === undefined) {
       const firstBeat = measureChanges[0].beat;
@@ -257,7 +257,7 @@ export function BmsChartDiff({
     }
   }, [measureChanges]);
 
-  // 변경 간 네비게이션
+  // Navigate between changes
   const navigateToChange = useCallback((index: number) => {
     if (measureChanges.length === 0) return;
     const clamped = Math.max(0, Math.min(measureChanges.length - 1, index));
@@ -266,7 +266,7 @@ export function BmsChartDiff({
     setScrollToBeat(beat);
     setSplitScrollToBeat(beat);
 
-    // 사이드바에서 해당 항목으로 스크롤
+    // Scroll to the corresponding item in the sidebar
     const el = sidebarRef.current?.querySelector(`[data-measure="${measureChanges[clamped].measure}"]`);
     el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [measureChanges]);
@@ -274,7 +274,7 @@ export function BmsChartDiff({
   const goToPrevChange = useCallback(() => navigateToChange(currentChangeIndex - 1), [currentChangeIndex, navigateToChange]);
   const goToNextChange = useCallback(() => navigateToChange(currentChangeIndex + 1), [currentChangeIndex, navigateToChange]);
 
-  // 키보드 단축키 (F7/F8)
+  // Keyboard shortcuts (F7/F8)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'F7') { e.preventDefault(); goToPrevChange(); }
@@ -286,7 +286,7 @@ export function BmsChartDiff({
 
   const effectiveHeight = viewerHeight ?? 600;
 
-  // 변경 없음 상태
+  // No-changes state
   if (hasNoChanges) {
     return (
       <div
@@ -588,7 +588,7 @@ export function BmsChartDiff({
 }
 
 /**
- * 통계 변화 표시 컴포넌트
+ * Component displaying a stat change value
  */
 function StatChange({
   label,

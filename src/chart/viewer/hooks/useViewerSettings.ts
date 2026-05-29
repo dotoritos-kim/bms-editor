@@ -1,9 +1,9 @@
 /**
- * useViewerSettings — 뷰어 표시 옵션 상태 훅
+ * useViewerSettings — viewer display options state hook
  *
- * NoteChartViewer.tsx 에서 추출된 BMS 표시 설정 상태 묶음.
- * 레인 옵션, hi-speed, 재생 속도, 그리드, 미니맵, 차트 크기,
- * 타이밍 마커 설정 등 UI 조작 가능한 파라미터를 관리합니다.
+ * BMS display settings state bundle extracted from NoteChartViewer.tsx.
+ * Manages UI-controllable parameters: lane options, hi-speed, playback speed,
+ * grid, minimap, chart size, and timing marker settings.
  */
 import { useState } from 'react';
 import type {
@@ -21,18 +21,18 @@ export interface UseViewerSettingsOptions {
 }
 
 export interface UseViewerSettingsReturn {
-  // UI 패널
+  // UI panel
   showSettings: boolean;
   setShowSettings: React.Dispatch<React.SetStateAction<boolean>>;
 
-  // 노트 필터 + 레인
+  // Note filter + lane
   localNoteFilter: NoteTypeFilter;
   setLocalNoteFilter: React.Dispatch<React.SetStateAction<NoteTypeFilter>>;
   laneOption: LaneOption;
   setLaneOption: React.Dispatch<React.SetStateAction<LaneOption>>;
   randomSeed: number;
 
-  // 재생 설정
+  // Playback settings
   hiSpeed: number;
   setHiSpeed: React.Dispatch<React.SetStateAction<number>>;
   playbackSpeed: number;
@@ -40,7 +40,7 @@ export interface UseViewerSettingsReturn {
   scrollSpeed: number;
   setScrollSpeed: React.Dispatch<React.SetStateAction<number>>;
 
-  // 컬럼 모드
+  // Column mode
   localMeasuresPerColumn: number;
   setLocalMeasuresPerColumn: React.Dispatch<React.SetStateAction<number>>;
   columnsLayout: ColumnsLayout;
@@ -48,13 +48,13 @@ export interface UseViewerSettingsReturn {
   verticalScrollY: number;
   setVerticalScrollY: React.Dispatch<React.SetStateAction<number>>;
 
-  // 그리드 + 미니맵
+  // Grid + minimap
   gridDivision: number;
   setGridDivision: React.Dispatch<React.SetStateAction<number>>;
   showMinimap: boolean;
   setShowMinimap: React.Dispatch<React.SetStateAction<boolean>>;
 
-  // 차트 크기 오버라이드
+  // Chart size overrides
   chartWidthOverride: number | null;
   setChartWidthOverride: React.Dispatch<React.SetStateAction<number | null>>;
   chartHeightOverride: number | null;
@@ -64,7 +64,7 @@ export interface UseViewerSettingsReturn {
   scaleWidthByScroll: boolean;
   setScaleWidthByScroll: React.Dispatch<React.SetStateAction<boolean>>;
 
-  // 타이밍 마커
+  // Timing markers
   timingMarkerSettings: TimingMarkerSettings;
   setTimingMarkerSettings: React.Dispatch<React.SetStateAction<TimingMarkerSettings>>;
 }
