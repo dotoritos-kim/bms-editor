@@ -56,6 +56,19 @@ See [`src/index.ts`](src/index.ts) for the full export list. Highlights:
 | `KeysoundPlayer` | Keysound preview helper |
 | `I18nProvider`, `useI18n` | i18n contract — see I18N.md |
 
+## Development
+
+```bash
+npm install       # on Windows use `npm install --include=dev` if devDeps are skipped
+npm run build     # vite build + .d.ts emit
+npm test          # vitest
+npm run format    # prettier (config: .prettierrc.json)
+```
+
+This package is **vendored** by `bms-electron-app` into `vendor/bms-editor/` via npm
+workspaces. Keep the vendored copy in sync when changing the public API — see the
+workspace health report (`WORKSPACE_HEALTH_*.md`).
+
 ## Versioning
 
 - Adding a key to `defaultMessages` is a **minor** bump.

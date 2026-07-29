@@ -21,7 +21,9 @@
     "type-check": "tsc --noEmit",
     "clean": "rm -rf dist",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "peerDependencies": {
     "@react-three/drei": ">=9.0.0",
@@ -35,7 +37,7 @@
     "zustand": ">=4.0.0"
   },
   "devDependencies": {
-    "@react-three/drei": "^9.0.0",
+    "@react-three/drei": "^10.0.0",
     "@react-three/fiber": "^9.5.0",
     "@rhythm-archive/bms-core": "file:../bms-core",
     "@rhythm-archive/bms-player": "file:../bms-player",
@@ -43,6 +45,7 @@
     "@types/react-dom": "^19.0.0",
     "@types/three": "^0.170.0",
     "lucide-react": "^0.460.0",
+    "prettier": "^3.4.0",
     "react": "^19.2.4",
     "react-dom": "^19.0.0",
     "three": "^0.170.0",
