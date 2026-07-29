@@ -1,8 +1,8 @@
 /**
  * NoteSearchDialog
  *
- * 차트 에디터 노트 검색 다이얼로그
- * Ctrl+F로 열림. 마디, 키음, 컬럼, 타입으로 노트를 검색하고 선택 가능.
+ * Note search dialog for the chart editor.
+ * Opened with Ctrl+F. Search and select notes by measure, keysound, column, and type.
  *
  * Uses plain HTML/CSS instead of Radix UI primitives for standalone usage.
  */

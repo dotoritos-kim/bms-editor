@@ -1,7 +1,7 @@
 /**
  * EditorToolbar Component
  *
- * 도구 선택, 그리드 스냅, 노트 타입, Undo/Redo, 저장 등
+ * Tool selection, grid snap, note type, Undo/Redo, save, etc.
  */
 
 import React, { useRef } from 'react';
@@ -121,7 +121,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
   return (
     <div className="flex flex-col bg-muted/50 border-b">
     <div className="flex items-center gap-2 p-2">
-      {/* 도구 선택 */}
+      {/* Tool selection */}
       <div className="flex items-center gap-1 border-r pr-2">
         {tools.map((tool) => {
           const isActive = activeTool === tool.id;
@@ -146,7 +146,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
         })}
       </div>
 
-      {/* 그리드 스냅 */}
+      {/* Grid snap */}
       <div className="flex items-center gap-1 border-r pr-2">
         <span className="text-xs text-muted-foreground">{t('toolbar.labels.grid')}</span>
         {showCustomGrid ? (
@@ -209,7 +209,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
         )}
       </div>
 
-      {/* Snap 토글 */}
+      {/* Snap toggle */}
       {onSnapToggle && (
         <div className="flex items-center gap-1 border-r pr-2">
           <button
@@ -229,7 +229,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
         </div>
       )}
 
-      {/* Layer 토글 */}
+      {/* Layer toggle */}
       {layerConfig && onLayerVisibleToggle && (
         <div className="flex items-center gap-0.5 border-r pr-2">
           {(['playable', 'invisible', 'landmine', 'bgm'] as const).map((layer) => {
@@ -261,7 +261,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
         </div>
       )}
 
-      {/* 노트 두께 */}
+      {/* Note thickness */}
       {onNoteHeightChange && (
         <div className="flex items-center gap-1 border-r pr-2">
           <span className="text-xs text-muted-foreground" title={t('toolbar.labels.thicknessTooltip')}>{t('toolbar.labels.thickness')}:</span>
@@ -279,7 +279,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
         </div>
       )}
 
-      {/* 줌 컨트롤 */}
+      {/* Zoom controls */}
       {(onZoomIn || onZoomOut) && (
         <div className="flex items-center gap-1 border-r pr-2">
           <span className="text-xs text-muted-foreground" title={t('toolbar.labels.zoomTooltip')}>{t('toolbar.labels.zoom')}:</span>
@@ -346,7 +346,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
         </div>
       )}
 
-      {/* 키 모드 */}
+      {/* Key mode */}
       {keyMode && onKeyModeChange && (
         <div className="flex items-center gap-1 border-r pr-2">
           <span className="text-xs text-muted-foreground" title={t('toolbar.labels.keyModeTooltip')}>{t('toolbar.labels.keyMode')}:</span>
@@ -364,7 +364,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
         </div>
       )}
 
-      {/* 노트 타입 (addNote 도구일 때만) */}
+      {/* Note type (addNote tool only) */}
       {activeTool === 'addNote' && (
         <div className="flex items-center gap-1 border-r pr-2">
           {noteTypes.map((type) => (
@@ -425,7 +425,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
         </button>
       </div>
 
-      {/* 저장/PR */}
+      {/* Save/PR */}
       <div className="flex items-center gap-1 ml-auto">
         {branchName && (
           <div className="flex items-center gap-1 text-xs text-muted-foreground px-2">
@@ -459,7 +459,7 @@ export const EditorToolbar = React.memo(function EditorToolbar({
         )}
       </div>
     </div>
-    {/* 현재 도구 설명 바 */}
+    {/* Current tool description bar */}
     {activeToolInfo && (
       <div className="flex items-center gap-2 px-3 py-1 border-t border-border/50 text-xs text-muted-foreground">
         <span className="font-semibold text-blue-400">{activeToolInfo.label}</span>

@@ -396,7 +396,7 @@ export const MeasureLinesRenderer = React.memo(function MeasureLinesRenderer({
   );
 });
 
-/** BPM 마커 렌더러 (batched LineSegments + viewport-culled Text) */
+/** BPM marker renderer (batched LineSegments + viewport-culled Text) */
 export const BpmMarkersRenderer = React.memo(function BpmMarkersRenderer({
   bpmChanges,
   beatScale,
@@ -459,7 +459,7 @@ export const BpmMarkersRenderer = React.memo(function BpmMarkersRenderer({
   );
 });
 
-/** STOP 마커 렌더러 (batched LineSegments + viewport-culled Text) */
+/** STOP marker renderer (batched LineSegments + viewport-culled Text) */
 export const StopMarkersRenderer = React.memo(function StopMarkersRenderer({
   stopEvents,
   beatScale,

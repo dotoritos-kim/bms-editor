@@ -1,8 +1,8 @@
 /**
  * EditorContextMenu
  *
- * 차트 에디터 우클릭 컨텍스트 메뉴
- * 노트 편집 작업 (복사, 붙여넣기, 삭제, 타입 변경 등)
+ * Right-click context menu for the chart editor.
+ * Note editing actions (copy, paste, delete, type change, etc.)
  *
  * Uses plain HTML/CSS instead of Radix UI context-menu for standalone usage.
  */
@@ -23,23 +23,23 @@ import type { NoteType } from '@rhythm-archive/bms-core';
 
 interface EditorContextMenuProps {
   children: React.ReactNode;
-  /** 선택된 노트 수 */
+  /** Number of selected notes */
   selectedCount: number;
-  /** 클립보드에 노트가 있는지 */
+  /** Whether the clipboard has notes */
   hasClipboard: boolean;
-  /** 콜백: 복사 */
+  /** Callback: copy */
   onCopy: () => void;
-  /** 콜백: 잘라내기 */
+  /** Callback: cut */
   onCut: () => void;
-  /** 콜백: 붙여넣기 */
+  /** Callback: paste */
   onPaste: () => void;
-  /** 콜백: 삭제 */
+  /** Callback: delete */
   onDelete: () => void;
-  /** 콜백: 전체 선택 */
+  /** Callback: select all */
   onSelectAll: () => void;
-  /** 콜백: 선택 해제 */
+  /** Callback: clear selection */
   onClearSelection: () => void;
-  /** 콜백: 노트 타입 변경 */
+  /** Callback: change note type */
   onChangeType?: (newType: NoteType) => void;
 }
 

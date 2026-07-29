@@ -1,12 +1,12 @@
 /**
- * useViewerAudioSettings — 뷰어 오디오 설정 상태 훅
+ * useViewerAudioSettings — viewer audio settings state hook
  *
- * NoteChartViewer.tsx 에서 추출된 오디오 관련 설정 상태 묶음.
- * 키사운드 on/off, 볼륨, 뮤트, 이퀄라이저, 이펙터, 다이얼로그 표시,
- * 파이프라인 레이턴시 측정값 등을 관리합니다.
+ * Bundle of audio-related settings state extracted from NoteChartViewer.tsx.
+ * Manages keysound on/off, volume, mute, equalizer, effector, dialog visibility,
+ * pipeline latency measurements, etc.
  *
- * 실제 KeysoundPlayer 라이프사이클(초기화/dispose)은 useKeysoundLifecycle 이 담당하며,
- * 이 훅은 그 설정 상태만을 제공합니다.
+ * The actual KeysoundPlayer lifecycle (init/dispose) is handled by useKeysoundLifecycle;
+ * this hook only provides the settings state.
  */
 import { useState } from 'react';
 import type { EqualizerSettings, EffectorSettings } from './useKeysoundLifecycle';

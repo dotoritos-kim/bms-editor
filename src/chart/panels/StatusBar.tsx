@@ -1,8 +1,8 @@
 /**
  * StatusBar
  *
- * 에디터 하단 상태 표시줄
- * 위치(마디·박자), 그리드, 선택 수, 총 노트 수, 노트 두께, 오디오 상태
+ * Editor bottom status bar.
+ * Position (measure/beat), grid, selection count, total notes, note thickness, audio status
  */
 
 import React from 'react';
@@ -12,21 +12,21 @@ import { useI18n } from '../../i18n';
 import type { GridSnap } from '../NoteChartEditor';
 
 interface StatusBarProps {
-  /** 현재 스크롤 비트 */
+  /** Current scroll beat */
   currentBeat: number;
-  /** 그리드 스냅 */
+  /** Grid snap */
   gridSnap: GridSnap;
-  /** 선택된 노트 수 */
+  /** Number of selected notes */
   selectedCount: number;
-  /** 총 노트 수 */
+  /** Total note count */
   totalNotes: number;
-  /** 현재 BPM */
+  /** Current BPM */
   bpm: number;
-  /** 노트 두께 (1~8) */
+  /** Note thickness (1~8) */
   noteHeight: number;
-  /** 오디오 로드 상태 */
+  /** Audio load status */
   audioReady?: boolean;
-  /** 추가 클래스명 */
+  /** Additional class name */
   className?: string;
 }
 

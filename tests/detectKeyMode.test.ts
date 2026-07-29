@@ -80,7 +80,7 @@ describe('detectKeyMode', () => {
   });
 
   it('should detect 6K (에리팩) for SC + 1,2,3,5,6,7 without col 4 (no header needed)', () => {
-    // SC+1,2,3,5,6,7+FZ with col 4 absent = 에리팩 스타일 6K — detectable without header
+    // SC+1,2,3,5,6,7+FZ with col 4 absent = 에리팩 (Eri pack) style 6K — detectable without header
     const notes = makeNotes(['SC', '1', '2', '3', '5', '6', '7']);
     expect(detectKeyMode(notes)).toBe('6K');
   });
@@ -98,7 +98,7 @@ describe('detectKeyMode', () => {
   });
 
   it('should detect 4K (유이팩) for SC + 1,2,4,5 without col 3 (no header needed)', () => {
-    // SC+1,2,4,5+FZ with col 3 absent = 유이팩 스타일 4K — detectable without header
+    // SC+1,2,4,5+FZ with col 3 absent = 유이팩 (Yui pack) style 4K — detectable without header
     const notes = makeNotes(['SC', '1', '2', '4', '5']);
     expect(detectKeyMode(notes)).toBe('4K');
   });

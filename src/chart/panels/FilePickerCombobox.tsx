@@ -1,7 +1,7 @@
 /**
  * FilePickerCombobox
  *
- * 레포지토리 내 이미지 파일을 검색/선택할 수 있는 콤보박스.
+ * Combobox for searching/selecting image files within the repository.
  * Uses plain HTML/CSS instead of Radix UI Popover + cmdk for standalone usage.
  */
 
@@ -10,17 +10,17 @@ import { Check, FolderOpen } from 'lucide-react';
 import { cn } from '../../utils';
 
 interface FilePickerComboboxProps {
-  /** 현재 선택된 파일명 */
+  /** Currently selected filename */
   value: string;
-  /** 파일 선택/변경 콜백 */
+  /** File select/change callback */
   onChange: (value: string) => void;
-  /** 선택 가능한 파일 목록 */
+  /** List of selectable files */
   files: string[];
-  /** placeholder 텍스트 */
+  /** Placeholder text */
   placeholder?: string;
-  /** 비활성화 여부 */
+  /** Disabled state */
   disabled?: boolean;
-  /** 입력 필드 클래스명 */
+  /** Input field class name */
   inputClassName?: string;
 }
 
