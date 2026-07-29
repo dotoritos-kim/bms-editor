@@ -29,16 +29,11 @@ import { useViewerKeyboard } from './viewer/hooks/useViewerKeyboard';
 import { useViewerSettings } from './viewer/hooks/useViewerSettings';
 import { useViewerAudioSettings } from './viewer/hooks/useViewerAudioSettings';
 import { useViewerPlayback } from './viewer/hooks/useViewerPlayback';
-// EqualizerBand/EqualizerSettings/EffectorSettings are exported from useKeysoundLifecycle
-import type { EqualizerBand, EqualizerSettings, EffectorSettings } from './viewer/hooks/useKeysoundLifecycle';
 import { useKeysoundTrigger } from './viewer/hooks/useKeysoundTrigger';
 import { NumberInputWithPresets } from './viewer/NumberInputWithPresets';
 import { applyLaneOption } from './viewer/laneUtils';
 // ── Renderer sub-modules (Stage E extraction) ─────────────────────────────────
 import {
-  NOTE_HEIGHT,
-  NOTE_PADDING,
-  mulberry32,
   LanesRenderer,
   MeasureLinesRenderer,
   NotesRenderer,
@@ -50,7 +45,6 @@ import {
   JudgmentLine,
   HitEffectsRenderer,
   Minimap,
-  type HitEffect,
 } from './viewer/renderers';
 
 // View mode type
@@ -287,7 +281,7 @@ export function NoteChartViewer({
     setScrollBeat,
     zoomLevel,
     setZoomLevel,
-    isDragging,
+    isDragging: _isDragging,
     handleMouseDown,
     handleMouseMove,
     handleMouseUp,
@@ -334,8 +328,8 @@ export function NoteChartViewer({
     keysoundVolume, setKeysoundVolume,
     keysoundMuted, setKeysoundMuted,
     audioDialogOpen, setAudioDialogOpen,
-    localEqualizer, setLocalEqualizer,
-    localEffector, setLocalEffector,
+    localEqualizer, setLocalEqualizer: _setLocalEqualizer,
+    localEffector, setLocalEffector: _setLocalEffector,
     pipelineLatency, setPipelineLatency,
     schedulingOverhead, setSchedulingOverhead,
   } = useViewerAudioSettings({ initialKeysoundEnabled: showKeysounds });
@@ -582,7 +576,7 @@ export function NoteChartViewer({
   const {
     isPlaying, setIsPlaying,
     playbackBeat, setPlaybackBeat,
-    animationRef,
+    animationRef: _animationRef,
     playbackBeatRef,
     lastPlayedBeatRef,
     togglePlayback,

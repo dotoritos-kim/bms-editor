@@ -15,7 +15,6 @@ import { Canvas, useThree, useFrame, ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { cn } from '../utils';
 import type { NoteType, EditableBMSNote } from '@rhythm-archive/bms-core';
-import type { KeyMode } from './NoteChartViewer';
 import { generateLaneConfig } from './laneConfig';
 
 // Sub-module imports
@@ -24,7 +23,6 @@ import {
   isLayerInteractable,
   type NoteChartEditorProps,
   type CoordConverter,
-  type ZoomControl,
   type LayerKey,
 } from './editor/types';
 

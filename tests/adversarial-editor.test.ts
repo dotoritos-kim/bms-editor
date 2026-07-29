@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildBeatToTimeMap, beatToTime } from '../src/chart/EditorPlayback';
-import { generateLaneConfig, getLaneIds, getLaneBackground } from '../src/chart/laneConfig';
+import { generateLaneConfig, getLaneBackground } from '../src/chart/laneConfig';
 import { detectKeyMode } from '../src/chart/useBmsChart';
 import type { BMSNote } from '@rhythm-archive/bms-core';
 import type { BMSBpmChange } from '@rhythm-archive/bms-core';

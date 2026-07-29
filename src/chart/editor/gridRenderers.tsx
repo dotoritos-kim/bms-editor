@@ -73,7 +73,7 @@ export const TextLabels = React.memo(function TextLabels({
   if (labels.length === 0) return null;
   return (
     <>
-      {labels.map((label, i) => {
+      {labels.map((label, _i) => {
         const { material, aspect } = _getOrCreateLabelMaterial(label.text, color);
         const worldW = worldHeight * aspect;
         const offsetX = align === 'left' ? worldW / 2 : -worldW / 2;
@@ -148,7 +148,7 @@ export const TextBatchStrip = React.memo(function TextBatchStrip({
   z,
   color,
   align,
-  stripWidth = 60,
+  stripWidth: _stripWidth = 60,
 }: {
   labels: { y: number; text: string }[];
   x: number;
@@ -313,7 +313,6 @@ export const MeasureLinesRenderer = React.memo(function MeasureLinesRenderer({
       measure++;
     }
     // Generate lines per measure
-    const startMeasure = measure;
     let currentBeat = measureBeat;
     while (currentBeat <= maxBeat && measure < 9999) {
       const size = timeSignatures?.get(measure) ?? 1.0;

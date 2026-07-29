@@ -141,7 +141,7 @@ function beatToMeasure(beat: number): number {
 export function BmsChartDiff({
   oldChart,
   newChart,
-  filePath,
+  filePath: _filePath,
   className,
   viewerHeight,
 }: BmsChartDiffProps) {

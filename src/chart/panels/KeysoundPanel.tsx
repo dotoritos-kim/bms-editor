@@ -55,7 +55,7 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
   currentKeysound,
   onSelect,
   onPreview,
-  isAudioReady = false,
+  isAudioReady: _isAudioReady = false,
   isAudioLoading = false,
   onUploadClick,
   keysoundUsageCounts,
@@ -115,7 +115,7 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
     [onSelect]
   );
 
-  const handlePreview = useCallback(
+  const _handlePreview = useCallback(
     (e: React.MouseEvent, id: string) => {
       e.stopPropagation();
       onPreview?.(id);

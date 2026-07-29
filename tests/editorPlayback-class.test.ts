@@ -4,7 +4,6 @@ import {
   buildBeatToTimeMap,
   beatToTime,
   timeToBeat,
-  type BpmEvent,
 } from '../src/chart/EditorPlayback';
 import type { EditableBMSNote, BMSBpmChange } from '@rhythm-archive/bms-core';
 

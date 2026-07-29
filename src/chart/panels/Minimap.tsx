@@ -8,7 +8,6 @@
 import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { cn } from '../../utils';
 import { useI18n } from '../../i18n';
-import type { EditableBMSNote } from '@rhythm-archive/bms-core';
 
 // Lane colors (column id → color). Same palette as the editor laneConfig.
 const LANE_COLORS: Record<string, string> = {

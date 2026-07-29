@@ -4,7 +4,6 @@
 
 import type { EditableBMSNote, BMSBpmChange, BMSStopEvent } from '@rhythm-archive/bms-core';
 import type { KeyMode } from '../NoteChartViewer';
-import type { LaneConfig } from '../laneConfig';
 import type { LayerConfig } from './layers';
 
 // Re-export shared layer types so callers using `from './editor/types'` still

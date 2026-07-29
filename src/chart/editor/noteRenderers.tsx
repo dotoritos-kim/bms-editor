@@ -19,7 +19,7 @@ import {
   NOTE_PADDING,
 } from './types';
 import type { CustomNoteColors, LayerConfig, LayerKey } from './types';
-import { useNoteHeight, getLaneColorHex, getNoteColorHex, getSelectionColorHex, getBgmLaneId, isBgmLaneId, _dummy, _color } from './editorUtils';
+import { useNoteHeight, getLaneColorHex, getNoteColorHex, getSelectionColorHex, getBgmLaneId, _dummy, _color } from './editorUtils';
 import { TextLabels } from './gridRenderers';
 
 /** Note renderer (InstancedMesh-based, viewport culling + dirty check) */
