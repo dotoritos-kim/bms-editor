@@ -167,10 +167,13 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
     if (pendingFiles.length === 0) return;
     setError(null);
 
-    // Check for duplicate WAV IDs
+    // Check for duplicate WAV IDs. Existing definitions may be keyed in
+    // lower case (parser output) while pending ids are upper case, so compare
+    // case-insensitively or an upload could silently clobber #WAVaa.
+    const existingUpper = new Set(Object.keys(existingWavDefinitions).map((k) => k.toUpperCase()));
     const idSet = new Set<string>();
     for (const pf of pendingFiles) {
-      if (idSet.has(pf.wavId) || existingWavDefinitions[pf.wavId]) {
+      if (idSet.has(pf.wavId) || existingUpper.has(pf.wavId.toUpperCase())) {
         setError(t('panels.keysound.uploadDialog.duplicateWavId', { id: pf.wavId }));
         return;
       }
@@ -255,7 +258,7 @@ export const KeysoundUploadDialog = React.memo(function KeysoundUploadDialog({
             accept=".wav,.ogg,.mp3"
             multiple
             className="hidden"
-            onChange={(e) => handleFilesSelected(e.target.files)}
+            onChange={(e) => { handleFilesSelected(e.target.files); e.target.value = ''; }}
           />
         </div>
 
