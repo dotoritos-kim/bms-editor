@@ -208,6 +208,9 @@ export const LanesRenderer = React.memo(function LanesRenderer({
     () => lanes.map((lane) => getLaneBackground(lane)),
     [lanes]
   );
+  // 48K plus BGM lanes exceeds the historical 50-instance buffer; size the
+  // mesh from the lane list (remounted via `key` when it has to grow).
+  const laneCapacity = Math.max(MAX_LANE_INSTANCES, lanes.length);
 
   // Lane backgrounds → single InstancedMesh
   useEffect(() => {
@@ -222,7 +225,7 @@ export const LanesRenderer = React.memo(function LanesRenderer({
       _color.set(laneBackgrounds[i]);
       mesh.setColorAt(i, _color);
     }
-    mesh.count = lanes.length;
+    mesh.count = Math.min(lanes.length, laneCapacity);
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   }, [lanes, totalHeight, offsetX, laneBackgrounds]);
@@ -243,8 +246,9 @@ export const LanesRenderer = React.memo(function LanesRenderer({
   return (
     <group>
       <instancedMesh
+        key={laneCapacity}
         ref={laneMeshRef}
-        args={[undefined, undefined, MAX_LANE_INSTANCES]}
+        args={[undefined, undefined, laneCapacity]}
         frustumCulled={false}
       >
         <planeGeometry args={[1, 1]} />
