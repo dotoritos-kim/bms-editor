@@ -97,7 +97,11 @@ export const EditorContextMenu = React.memo(function EditorContextMenu({
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    setMenuPos({ x: e.clientX, y: e.clientY });
+    // Keep the menu inside the viewport near the right/bottom edges.
+    const MENU_W = 240, MENU_H = 320;
+    const x = Math.max(0, Math.min(e.clientX, window.innerWidth - MENU_W));
+    const y = Math.max(0, Math.min(e.clientY, window.innerHeight - MENU_H));
+    setMenuPos({ x, y });
     setShowTypeSubmenu(false);
   }, []);
 
@@ -105,6 +109,16 @@ export const EditorContextMenu = React.memo(function EditorContextMenu({
     setMenuPos(null);
     setShowTypeSubmenu(false);
   }, []);
+
+  // Escape closes the menu
+  useEffect(() => {
+    if (!menuPos) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); closeMenu(); }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [menuPos, closeMenu]);
 
   // Close on outside click
   useEffect(() => {
