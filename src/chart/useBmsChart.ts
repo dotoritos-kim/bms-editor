@@ -424,8 +424,9 @@ export function useBmsChart(options: UseBmsChartOptions): UseBmsChartReturn {
           // STOP value references the #STOPxx header
           const stopHeader = chart.headers.get('stop' + obj.value);
           if (stopHeader) {
-            // STOP value is in 1/192 beat units (negative values supported - minus-stop gimmick)
-            const stopValue = parseInt(stopHeader, 10) / 192;
+            // STOP value is in 1/192 whole-note units = 1/48 beat (negative values
+            // supported - minus-stop gimmick). Same conversion as bms-core Timing.
+            const stopValue = parseInt(stopHeader, 10) / 48;
             if (!isNaN(stopValue) && stopValue !== 0) {
               stops.push({
                 beat: chart.measureToBeat(obj.measure, obj.fraction),

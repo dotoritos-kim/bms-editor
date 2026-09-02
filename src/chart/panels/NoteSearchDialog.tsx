@@ -7,7 +7,8 @@
  * Uses plain HTML/CSS instead of Radix UI primitives for standalone usage.
  */
 
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import { useI18n } from '../../i18n';
 import { Search, MousePointerClick, Navigation } from 'lucide-react';
 import { cn } from '../../utils';
 import { generateLaneConfig } from '../laneConfig';
@@ -24,13 +25,13 @@ interface NoteSearchDialogProps {
   onNavigate: (beat: number) => void;
 }
 
-const NOTE_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'all', label: 'All' },
-  { value: 'playable', label: 'Playable' },
-  { value: 'invisible', label: 'Invisible' },
-  { value: 'landmine', label: 'Landmine' },
-  { value: 'bgm', label: 'BGM' },
-];
+const NOTE_TYPE_OPTIONS = [
+  { value: 'all', labelKey: 'panels.noteSearch.types.all' },
+  { value: 'playable', labelKey: 'panels.noteSearch.types.playable' },
+  { value: 'invisible', labelKey: 'panels.noteSearch.types.invisible' },
+  { value: 'landmine', labelKey: 'panels.noteSearch.types.landmine' },
+  { value: 'bgm', labelKey: 'panels.noteSearch.types.bgm' },
+] as const;
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
@@ -83,6 +84,7 @@ export const NoteSearchDialog = React.memo(function NoteSearchDialog({
   onSelectNotes,
   onNavigate,
 }: NoteSearchDialogProps) {
+  const { t } = useI18n();
   // Filter state
   const [measureFrom, setMeasureFrom] = useState('');
   const [measureTo, setMeasureTo] = useState('');
@@ -159,6 +161,16 @@ export const NoteSearchDialog = React.memo(function NoteSearchDialog({
 
   const hasFilters = measureFrom !== '' || measureTo !== '' || keysoundQuery !== '' || selectedColumns.size > 0 || noteTypeFilter !== 'all';
 
+  // Escape closes the dialog (previously only a backdrop click could).
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); onClose(); }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (
@@ -167,37 +179,40 @@ export const NoteSearchDialog = React.memo(function NoteSearchDialog({
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="note-search-title"
         style={{ background: '#1e1e2e', border: '1px solid #333', borderRadius: 8, padding: 24, width: '100%', maxWidth: 480, boxShadow: '0 8px 24px rgba(0,0,0,0.5)' }}
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
           <Search style={{ width: 16, height: 16 }} />
-          <h3 style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>Note Search</h3>
+          <h3 id="note-search-title" style={{ fontSize: 16, fontWeight: 600, margin: 0 }}>{t('panels.noteSearch.title')}</h3>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Measure range */}
           <div>
-            <label style={labelStyle}>Measure Range</label>
+            <label style={labelStyle}>{t('panels.noteSearch.measureRange')}</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input type="number" min={1} placeholder="Start" value={measureFrom} onChange={(e) => setMeasureFrom(e.target.value)} style={inputStyle} />
+              <input type="number" min={1} placeholder={t('panels.noteSearch.measureFrom')} value={measureFrom} onChange={(e) => setMeasureFrom(e.target.value)} style={inputStyle} />
               <span style={{ fontSize: 12, color: '#9ca3af' }}>~</span>
-              <input type="number" min={1} placeholder="End" value={measureTo} onChange={(e) => setMeasureTo(e.target.value)} style={inputStyle} />
+              <input type="number" min={1} placeholder={t('panels.noteSearch.measureTo')} value={measureTo} onChange={(e) => setMeasureTo(e.target.value)} style={inputStyle} />
             </div>
           </div>
 
           {/* Keysound search */}
           <div>
-            <label style={labelStyle}>Keysound (WAV ID / Filename)</label>
-            <input placeholder="e.g., 01, kick, snare..." value={keysoundQuery} onChange={(e) => setKeysoundQuery(e.target.value)} style={inputStyle} />
+            <label style={labelStyle}>{t('panels.noteSearch.keysoundLabel')}</label>
+            <input placeholder={t('panels.noteSearch.keysoundPlaceholder')} value={keysoundQuery} onChange={(e) => setKeysoundQuery(e.target.value)} style={inputStyle} />
           </div>
 
           {/* Column selection */}
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <label style={labelStyle}>Column (Lane)</label>
+              <label style={labelStyle}>{t('panels.noteSearch.columnLabel')}</label>
               <button onClick={toggleAllColumns} style={{ fontSize: 12, color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer' }}>
-                {selectedColumns.size === laneConfigs.length ? 'Deselect All' : 'Select All'}
+                {selectedColumns.size === laneConfigs.length ? t('panels.noteSearch.deselectAllColumns') : t('panels.noteSearch.selectAllColumns')}
               </button>
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
@@ -220,14 +235,14 @@ export const NoteSearchDialog = React.memo(function NoteSearchDialog({
 
           {/* Note type */}
           <div>
-            <label style={labelStyle}>Note Type</label>
+            <label style={labelStyle}>{t('panels.noteSearch.noteTypeLabel')}</label>
             <select
               value={noteTypeFilter}
               onChange={(e) => setNoteTypeFilter(e.target.value as NoteType | 'all')}
               style={{ ...inputStyle, cursor: 'pointer' }}
             >
               {NOTE_TYPE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                <option key={opt.value} value={opt.value}>{t(opt.labelKey)}</option>
               ))}
             </select>
           </div>
@@ -236,18 +251,18 @@ export const NoteSearchDialog = React.memo(function NoteSearchDialog({
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: 8, borderTop: '1px solid #333' }}>
             <div style={{ fontSize: 14 }}>
               {hasFilters ? (
-                <span>
-                  Results: <span style={{ fontWeight: 600, color: '#fb923c' }}>{matchingNotes.length}</span> notes
+                <span style={{ fontWeight: 600, color: '#fb923c' }}>
+                  {t('panels.noteSearch.results', { count: matchingNotes.length })}
                 </span>
               ) : (
                 <span style={{ color: '#9ca3af' }}>
-                  Total {notes.length} notes
+                  {t('panels.noteSearch.total', { count: notes.length })}
                 </span>
               )}
             </div>
             {hasFilters && (
               <button onClick={handleReset} style={{ fontSize: 12, color: '#9ca3af', background: 'none', border: 'none', cursor: 'pointer' }}>
-                Reset Filters
+                {t('panels.noteSearch.resetFilters')}
               </button>
             )}
           </div>
@@ -260,7 +275,7 @@ export const NoteSearchDialog = React.memo(function NoteSearchDialog({
               style={{ ...btnStyle, flex: 1, opacity: matchingNotes.length === 0 ? 0.5 : 1, cursor: matchingNotes.length === 0 ? 'not-allowed' : 'pointer' }}
             >
               <MousePointerClick style={{ width: 14, height: 14 }} />
-              Select All ({matchingNotes.length})
+              {t('panels.noteSearch.selectResults', { count: matchingNotes.length })}
             </button>
             <button
               onClick={handleGoToFirst}
@@ -268,7 +283,7 @@ export const NoteSearchDialog = React.memo(function NoteSearchDialog({
               style={{ ...btnOutlineStyle, opacity: matchingNotes.length === 0 ? 0.5 : 1, cursor: matchingNotes.length === 0 ? 'not-allowed' : 'pointer' }}
             >
               <Navigation style={{ width: 14, height: 14 }} />
-              Go to First
+              {t('panels.noteSearch.goToFirst')}
             </button>
           </div>
         </div>

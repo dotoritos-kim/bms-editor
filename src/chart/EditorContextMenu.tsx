@@ -20,6 +20,7 @@ import {
   Music,
 } from 'lucide-react';
 import type { NoteType } from '@rhythm-archive/bms-core';
+import { useI18n } from '../i18n';
 
 interface EditorContextMenuProps {
   children: React.ReactNode;
@@ -88,6 +89,7 @@ export const EditorContextMenu = React.memo(function EditorContextMenu({
   onClearSelection,
   onChangeType,
 }: EditorContextMenuProps) {
+  const { t } = useI18n();
   const hasSelection = selectedCount > 0;
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [showTypeSubmenu, setShowTypeSubmenu] = useState(false);
@@ -148,7 +150,7 @@ export const EditorContextMenu = React.memo(function EditorContextMenu({
             onClick={() => handleAction(onSelectAll)}
           >
             <MousePointer2 style={{ width: 16, height: 16 }} />
-            Select All
+            {t('contextMenu.selectAll')}
             <span style={shortcutStyle}>Ctrl+A</span>
           </button>
           {hasSelection && (
@@ -158,7 +160,7 @@ export const EditorContextMenu = React.memo(function EditorContextMenu({
               onMouseLeave={(e) => { (e.currentTarget.style.background = 'none'); }}
               onClick={() => handleAction(onClearSelection)}
             >
-              Deselect
+              {t('contextMenu.deselect')}
               <span style={shortcutStyle}>Esc</span>
             </button>
           )}
@@ -173,7 +175,7 @@ export const EditorContextMenu = React.memo(function EditorContextMenu({
             onClick={() => hasSelection && handleAction(onCopy)}
           >
             <Copy style={{ width: 16, height: 16 }} />
-            Copy
+            {t('contextMenu.copy')}
             <span style={shortcutStyle}>Ctrl+C</span>
           </button>
           <button
@@ -183,7 +185,7 @@ export const EditorContextMenu = React.memo(function EditorContextMenu({
             onClick={() => hasSelection && handleAction(onCut)}
           >
             <Scissors style={{ width: 16, height: 16 }} />
-            Cut
+            {t('contextMenu.cut')}
             <span style={shortcutStyle}>Ctrl+X</span>
           </button>
           <button
@@ -193,7 +195,7 @@ export const EditorContextMenu = React.memo(function EditorContextMenu({
             onClick={() => hasClipboard && handleAction(onPaste)}
           >
             <Clipboard style={{ width: 16, height: 16 }} />
-            Paste
+            {t('contextMenu.paste')}
             <span style={shortcutStyle}>Ctrl+V</span>
           </button>
 
@@ -207,7 +209,7 @@ export const EditorContextMenu = React.memo(function EditorContextMenu({
             onClick={() => hasSelection && handleAction(onDelete)}
           >
             <Trash2 style={{ width: 16, height: 16 }} />
-            Delete ({selectedCount})
+            {t('contextMenu.deleteCount', { count: selectedCount })}
             <span style={shortcutStyle}>Del</span>
           </button>
 
@@ -222,7 +224,7 @@ export const EditorContextMenu = React.memo(function EditorContextMenu({
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
                 >
                   <Music style={{ width: 16, height: 16 }} />
-                  Change Note Type
+                  {t('contextMenu.changeNoteType')}
                   <span style={shortcutStyle}>&rsaquo;</span>
                 </button>
                 {showTypeSubmenu && (
@@ -248,7 +250,7 @@ export const EditorContextMenu = React.memo(function EditorContextMenu({
                       onClick={() => { onChangeType('playable'); closeMenu(); }}
                     >
                       <Eye style={{ width: 16, height: 16 }} />
-                      Playable
+                      {t('contextMenu.types.playable')}
                     </button>
                     <button
                       style={menuItemStyle}
@@ -257,7 +259,7 @@ export const EditorContextMenu = React.memo(function EditorContextMenu({
                       onClick={() => { onChangeType('invisible'); closeMenu(); }}
                     >
                       <EyeOff style={{ width: 16, height: 16 }} />
-                      Invisible
+                      {t('contextMenu.types.invisible')}
                     </button>
                     <button
                       style={menuItemStyle}
@@ -266,7 +268,7 @@ export const EditorContextMenu = React.memo(function EditorContextMenu({
                       onClick={() => { onChangeType('landmine'); closeMenu(); }}
                     >
                       <Bomb style={{ width: 16, height: 16 }} />
-                      Landmine
+                      {t('contextMenu.types.landmine')}
                     </button>
                   </div>
                 )}

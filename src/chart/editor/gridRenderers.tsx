@@ -494,7 +494,7 @@ export const StopMarkersRenderer = React.memo(function StopMarkersRenderer({
     return stopEvents
       .map((stop) => {
         const beat = stop.measure * 4 + stop.fraction * 4;
-        const durationBeats = stop.duration / 192;
+        const durationBeats = stop.duration / 48; // 1/192 whole note = 1/48 beat
         return { beat, y: beat * beatScale, label: `STOP ${durationBeats.toFixed(2)}b` };
       })
       .filter((l) => l.beat >= minBeat && l.beat <= maxBeat);

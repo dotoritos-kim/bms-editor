@@ -57,7 +57,7 @@ function beatToSeconds(
   const stopEvts = stopEvents
     .map((s) => ({
       beat: s.measure * 4 + s.fraction * 4,
-      durationBeats: s.duration / 192, // 192 = 1 beat
+      durationBeats: s.duration / 48, // #STOP is in 1/192 whole notes = 1/48 beat (matches bms-core Timing)
     }))
     .sort((a, b) => a.beat - b.beat);
 
