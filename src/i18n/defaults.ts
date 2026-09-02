@@ -90,6 +90,7 @@ export const defaultMessages = {
       uploadTooltip: 'Upload keysound files',
       searchPlaceholder: 'Search...',
       noSilent: 'Silent / No Sound',
+      previewHint: 'Double-click to preview',
       noSearchResults: 'No matches',
       empty: 'No keysounds loaded',
       countSummary: '{{count}} keysound(s)',

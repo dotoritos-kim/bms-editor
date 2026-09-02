@@ -115,7 +115,8 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
     [onSelect]
   );
 
-  const _handlePreview = useCallback(
+  // Double-click a keysound row to audition it (single click selects).
+  const handlePreview = useCallback(
     (e: React.MouseEvent, id: string) => {
       e.stopPropagation();
       onPreview?.(id);
@@ -230,7 +231,7 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
                     const isHighlighted = highlightKeysound === id;
                     const displayName = folder ? filename.substring(folder.length + 1) : filename;
                     return (
-                      <button key={id} onClick={() => handleSelect(id)} onContextMenu={hasContextMenu ? (e) => handleContextMenu(e, id) : undefined} draggable onDragStart={(e) => handleDragStart(e, id)}
+                      <button key={id} onClick={() => handleSelect(id)} onDoubleClick={onPreview ? (e) => handlePreview(e, id) : undefined} title={onPreview ? t('panels.keysound.previewHint') : undefined} onContextMenu={hasContextMenu ? (e) => handleContextMenu(e, id) : undefined} draggable onDragStart={(e) => handleDragStart(e, id)}
                         className={cn('w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted/50 transition-colors text-left cursor-grab active:cursor-grabbing', folder && 'pl-5', currentKeysound === id && 'bg-primary/10 text-primary', isHighlighted && 'bg-orange-500/15 ring-1 ring-orange-500/40')}>
                         <span className="font-mono w-6 text-center shrink-0">{id}</span>
                         <span className={cn('truncate flex-1', usageCount === 0 ? 'text-zinc-600 line-through' : 'text-muted-foreground')}>{displayName}</span>
@@ -247,7 +248,7 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
                 const usageCount = keysoundUsageCounts?.[id] ?? undefined;
                 const isHighlighted = highlightKeysound === id;
                 return (
-                  <button key={id} onClick={() => handleSelect(id)} onContextMenu={hasContextMenu ? (e) => handleContextMenu(e, id) : undefined} draggable onDragStart={(e) => handleDragStart(e, id)}
+                  <button key={id} onClick={() => handleSelect(id)} onDoubleClick={onPreview ? (e) => handlePreview(e, id) : undefined} title={onPreview ? t('panels.keysound.previewHint') : undefined} onContextMenu={hasContextMenu ? (e) => handleContextMenu(e, id) : undefined} draggable onDragStart={(e) => handleDragStart(e, id)}
                     className={cn('w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted/50 transition-colors text-left cursor-grab active:cursor-grabbing', currentKeysound === id && 'bg-primary/10 text-primary', isHighlighted && 'bg-orange-500/15 ring-1 ring-orange-500/40')}>
                     <span className="font-mono w-6 text-center shrink-0">{id}</span>
                     <span className={cn('truncate flex-1', usageCount === 0 ? 'text-zinc-600 line-through' : 'text-muted-foreground')}>{filename}</span>
