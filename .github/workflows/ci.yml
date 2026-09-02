@@ -20,7 +20,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: dotoritos-kim/bms-core
-          token: ${{ secrets.WORKSPACE_REPO_TOKEN || github.token }}
+          token: ${{ github.token }}
           path: bms-core
         continue-on-error: true
 
@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: dotoritos-kim/bms-player
-          token: ${{ secrets.WORKSPACE_REPO_TOKEN || github.token }}
+          token: ${{ github.token }}
           path: bms-player
         continue-on-error: true
 
