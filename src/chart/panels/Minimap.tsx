@@ -108,6 +108,8 @@ export const Minimap = React.memo(function Minimap({
     });
     return map;
   }, [laneOrder]);
+  // column → lane index (avoids an O(lanes) indexOf per note on every redraw)
+  const laneIndexMap = useMemo(() => new Map(laneOrder.map((col, i) => [col, i] as const)), [laneOrder]);
 
   // Observe container size
   useEffect(() => {
@@ -205,7 +207,7 @@ export const Minimap = React.memo(function Minimap({
       const pos = colPosMap.get(note.column);
       if (pos === undefined) continue;
 
-      const laneIdx = laneOrder.indexOf(note.column);
+      const laneIdx = laneIndexMap.get(note.column) ?? 0;
       const x = padX + laneIdx * laneW + 1.5;
       const w = laneW - 3;
       const y = ch - note.beat * scale - noteH;
@@ -296,7 +298,7 @@ export const Minimap = React.memo(function Minimap({
       }
       ctx.globalAlpha = 1;
     }
-  }, [notes, totalBeats, currentBeat, viewportBeats, size, laneOrder, colPosMap, densityData, bookmarks]);
+  }, [notes, totalBeats, currentBeat, viewportBeats, size, laneOrder, colPosMap, laneIndexMap, densityData, bookmarks]);
 
   // Click/drag to navigate (clamp to valid scroll range to prevent feedback oscillation)
   const navigateFromEvent = useCallback(
