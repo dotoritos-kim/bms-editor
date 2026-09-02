@@ -3,7 +3,7 @@
  * Numeric input with preset buttons, extracted from NoteChartViewer (Stage G).
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { cn } from '../../utils';
 import { useI18n } from '../../i18n';
 
@@ -38,6 +38,7 @@ export const NumberInputWithPresets = React.memo(function NumberInputWithPresets
   const { t } = useI18n();
   const [inputValue, setInputValue] = useState(String(value));
   const [isFocused, setIsFocused] = useState(false);
+  const cancelledRef = useRef(false);
 
   // Sync when external value changes and input is not focused
   useEffect(() => {
@@ -55,6 +56,13 @@ export const NumberInputWithPresets = React.memo(function NumberInputWithPresets
 
   const handleInputBlur = useCallback(() => {
     setIsFocused(false);
+    if (cancelledRef.current) {
+      // Escape: discard the typed value (blur fires with the stale closure,
+      // so the reset in handleKeyDown alone still committed the edit).
+      cancelledRef.current = false;
+      setInputValue(String(value));
+      return;
+    }
     let parsed = parseFloat(inputValue);
     if (isNaN(parsed)) parsed = value;
     const clamped = Math.max(min, Math.min(max, parsed));
@@ -68,6 +76,7 @@ export const NumberInputWithPresets = React.memo(function NumberInputWithPresets
     if (e.key === 'Enter') {
       (e.target as HTMLInputElement).blur();
     } else if (e.key === 'Escape') {
+      cancelledRef.current = true;
       setInputValue(String(value));
       (e.target as HTMLInputElement).blur();
     } else if (e.key === 'ArrowUp') {

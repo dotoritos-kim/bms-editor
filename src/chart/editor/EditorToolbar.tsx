@@ -88,6 +88,8 @@ export const EditorToolbar = React.memo(function EditorToolbar({
   const [showZoomPreset, setShowZoomPreset] = React.useState(false);
   const [showCustomGrid, setShowCustomGrid] = React.useState(false);
   const customGridInputRef = useRef<HTMLInputElement>(null);
+  /** Set by Escape so the blur handler discards instead of committing. */
+  const customGridCancelledRef = useRef(false);
   const zoomPresetRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
     if (!showZoomPreset) return;
@@ -169,13 +171,25 @@ export const EditorToolbar = React.memo(function EditorToolbar({
               autoFocus
               className="w-16 px-1.5 py-0.5 text-xs bg-muted border border-blue-500 rounded"
               onBlur={(e) => {
-                // Submit value on blur instead of just closing
+                // Submit value on blur instead of just closing — unless Escape
+                // asked to discard the edit.
+                if (customGridCancelledRef.current) {
+                  customGridCancelledRef.current = false;
+                  setShowCustomGrid(false);
+                  return;
+                }
                 const val = e.currentTarget.value;
                 const parsed = parseInt(val, 10);
                 if (parsed > 0 && parsed <= 3840) onGridSnapChange(parsed as GridSnap);
                 setShowCustomGrid(false);
               }}
-              onKeyDown={(e) => { if (e.key === 'Escape') { e.currentTarget.blur(); } }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  customGridCancelledRef.current = true;
+                  e.currentTarget.blur();
+                }
+              }}
             />
             <span className="text-xs text-zinc-400">/m</span>
           </form>
