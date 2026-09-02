@@ -25,12 +25,36 @@ const LABEL_FONT_PX = 20;
 const LABEL_WORLD_HEIGHT = 6; // world units height per label
 
 const _labelGeometry = new THREE.PlaneGeometry(1, 1);
+/**
+ * Label texture cache, bounded LRU. Every distinct `text\0color` costs a
+ * canvas + GPU texture; scrolling a long chart end to end used to accumulate
+ * one per measure number / BPM / STOP label for the life of the page.
+ */
+const LABEL_CACHE_MAX = 256;
 const _labelMaterialCache = new Map<string, THREE.MeshBasicMaterial>();
+
+function _disposeLabelMaterial(material: THREE.MeshBasicMaterial): void {
+  material.map?.dispose();
+  material.dispose();
+}
 
 function _getOrCreateLabelMaterial(text: string, color: string): { material: THREE.MeshBasicMaterial; aspect: number } {
   const key = `${text}\0${color}`;
   const cached = _labelMaterialCache.get(key);
-  if (cached) return { material: cached, aspect: (cached.map as THREE.CanvasTexture).image.width / (cached.map as THREE.CanvasTexture).image.height };
+  if (cached) {
+    // Refresh recency (Map preserves insertion order).
+    _labelMaterialCache.delete(key);
+    _labelMaterialCache.set(key, cached);
+    return { material: cached, aspect: (cached.map as THREE.CanvasTexture).image.width / (cached.map as THREE.CanvasTexture).image.height };
+  }
+  if (_labelMaterialCache.size >= LABEL_CACHE_MAX) {
+    const oldestKey = _labelMaterialCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      const oldest = _labelMaterialCache.get(oldestKey);
+      _labelMaterialCache.delete(oldestKey);
+      if (oldest) _disposeLabelMaterial(oldest);
+    }
+  }
 
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d')!;
