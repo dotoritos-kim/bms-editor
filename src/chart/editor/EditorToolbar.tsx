@@ -119,10 +119,10 @@ export const EditorToolbar = React.memo(function EditorToolbar({
   const activeToolInfo = tools.find((t) => t.id === activeTool);
 
   return (
-    <div className="flex flex-col bg-muted/50 border-b">
-    <div className="flex items-center gap-2 p-2">
+    <div className="flex flex-col bg-muted/50 border-b min-w-0 overflow-hidden">
+    <div className="flex flex-wrap items-center gap-2 p-2 min-w-0">
       {/* Tool selection */}
-      <div className="flex items-center gap-1 border-r pr-2">
+      <div className="flex flex-wrap items-center gap-1 border-r pr-2">
         {tools.map((tool) => {
           const isActive = activeTool === tool.id;
           return (
