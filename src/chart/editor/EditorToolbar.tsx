@@ -461,10 +461,10 @@ export const EditorToolbar = React.memo(function EditorToolbar({
     </div>
     {/* Current tool description bar */}
     {activeToolInfo && (
-      <div className="flex items-center gap-2 px-3 py-1 border-t border-border/50 text-xs text-muted-foreground">
-        <span className="font-semibold text-blue-400">{activeToolInfo.label}</span>
-        <span className="text-border/60">|</span>
-        <span>{activeToolInfo.description}</span>
+      <div className="flex items-center gap-2 px-3 py-1 border-t border-border/50 text-xs text-muted-foreground min-w-0 overflow-hidden">
+        <span className="font-semibold text-blue-400 shrink-0">{activeToolInfo.label}</span>
+        <span className="text-border/60 shrink-0">|</span>
+        <span className="truncate min-w-0" title={activeToolInfo.description}>{activeToolInfo.description}</span>
       </div>
     )}
     </div>
