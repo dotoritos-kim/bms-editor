@@ -560,16 +560,6 @@ export function NoteChartViewer({
     [_toggleFullscreen],
   );
 
-  // Keysound state debugging (temporary)
-  useEffect(() => {
-    if (keysoundReady && keysoundPlayerRef.current) {
-      console.log('[NoteChartViewer] Keysound ready. Sample note keysounds:',
-        notes.slice(0, 10).map(n => n.keysound).filter(Boolean));
-      console.log('[NoteChartViewer] Keysounds prop keys:',
-        keysounds ? Object.keys(keysounds).slice(0, 10) : 'none');
-    }
-  }, [keysoundReady, notes, keysounds]);
-
   // Playback engine — delegated to useViewerPlayback hook
   // (includes animation loop, togglePlayback, calculateTimeAtBeat, playback state/refs)
   // playedNotesRef is owned by useKeysoundTrigger → injected here

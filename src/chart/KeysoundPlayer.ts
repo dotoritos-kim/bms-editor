@@ -128,7 +128,7 @@ export class KeysoundPlayer {
     try {
       // Measure monitor frame duration → use as latencyHint
       const frameDuration = await detectFrameDuration();
-      console.log(`[KeysoundPlayer] Detected frame duration: ${(frameDuration * 1000).toFixed(2)}ms → latencyHint: ${frameDuration.toFixed(5)}s`);
+      if (import.meta.env?.DEV) console.log(`[KeysoundPlayer] Detected frame duration: ${(frameDuration * 1000).toFixed(2)}ms → latencyHint: ${frameDuration.toFixed(5)}s`);
 
       // Create Worker instance (consumer-provided factory)
       const worker = this.options.workerFactory();
@@ -182,7 +182,7 @@ export class KeysoundPlayer {
             this._isRecovering = true;
             ctx.resume().then(() => {
               this._isRecovering = false;
-              console.log('[KeysoundPlayer] AudioContext resumed successfully');
+              if (import.meta.env?.DEV) console.log('[KeysoundPlayer] AudioContext resumed successfully');
             }).catch(() => {
               this._isRecovering = false;
             });
