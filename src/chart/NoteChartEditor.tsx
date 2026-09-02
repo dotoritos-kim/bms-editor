@@ -11,6 +11,13 @@
  */
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+
+/** True when a keyboard event originates from a text-entry element (input, textarea, select, contenteditable). */
+function isEditableEventTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;
+  return target.isContentEditable;
+}
 import { Canvas, useThree, useFrame, ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { cn } from '../utils';
@@ -213,6 +220,7 @@ function EditorCanvas({
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isEditableEventTarget(e.target)) return; // typing in a field — leave the keys alone
       switch (e.key) {
         case 'PageUp': {
           e.preventDefault();
@@ -627,6 +635,30 @@ function EditorCanvas({
     [activeTool, screenToWorld, worldToLaneBeat, findNoteAtPosition, findLongNoteEndAtPosition, selectedNotes, selectedNoteType, currentKeysound, baseBpm, beatScale, totalBeats, onNoteAdd, onNoteDelete, onNoteSelect, onBpmChange, onBpmRequest, onBpmEditRequest, onStopRequest, onStopEditRequest, onStopDelete, stopEvents, onKeysoundAssign]
   );
 
+  // Pointer released outside the canvas: the R3F group never sees the
+  // pointerup, so the drag / rubber-band / LN-create / resize state would
+  // stick until the next click completed the stale gesture. Cancel it here.
+  const gestureActive = isDragging || rubberBand !== null || lnDragCreate !== null || resizing !== null;
+  useEffect(() => {
+    if (!gestureActive) return;
+    const cancelGesture = () => {
+      if (pointerUpProcessedRef.current) return; // handled inside the canvas
+      pointerUpProcessedRef.current = true;
+      setIsDragging(false);
+      setDragStart(null);
+      setDragDelta(null);
+      setRubberBand(null);
+      setLnDragCreate(null);
+      setResizing(null);
+    };
+    window.addEventListener('pointerup', cancelGesture);
+    window.addEventListener('pointercancel', cancelGesture);
+    return () => {
+      window.removeEventListener('pointerup', cancelGesture);
+      window.removeEventListener('pointercancel', cancelGesture);
+    };
+  }, [gestureActive]);
+
   const handlePointerUp = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
       e.stopPropagation();
@@ -804,6 +836,7 @@ export const NoteChartEditor = React.memo(function NoteChartEditor({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isEditableEventTarget(e.target)) return; // Delete inside an input edits text, not notes
       if (e.key === 'Delete' && selectedNotes.size > 0) {
         e.preventDefault();
         onNoteDelete(Array.from(selectedNotes));
