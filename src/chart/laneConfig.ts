@@ -135,7 +135,9 @@ export function generateLaneConfig(keyMode: KeyMode, bgmChannelCount?: number): 
       scratchWidth: 0,
     },
     '10K': {
-      lanes: ['SC', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'SC2'],
+      // 2P keys use columns 8-12 (bms-core IIDX DP mapping: channels 21-25),
+      // so a 10K chart's 2P notes land on visible lanes and save to 21-25.
+      lanes: ['SC', '1', '2', '3', '4', '5', '8', '9', '10', '11', '12', 'SC2'],
       colors: {
         SC: '#ff3366',
         '1': '#ffffff',
@@ -143,11 +145,11 @@ export function generateLaneConfig(keyMode: KeyMode, bgmChannelCount?: number): 
         '3': '#ffffff',
         '4': '#3399ff',
         '5': '#ffffff',
-        '6': '#ffffff',
-        '7': '#3399ff',
         '8': '#ffffff',
         '9': '#3399ff',
         '10': '#ffffff',
+        '11': '#3399ff',
+        '12': '#ffffff',
         SC2: '#ff3366',
       },
       laneWidth: 18,
@@ -260,7 +262,7 @@ export function getLaneIds(keyMode: KeyMode): string[] {
 /** Return the 1P/2P split index for DP modes (divider position). Returns null for SP modes. */
 export function getDpSplitIndex(keyMode: KeyMode): number | null {
   switch (keyMode) {
-    case '10K': return 6;  // SC,1-5 | 6-10,SC2
+    case '10K': return 6;  // SC,1-5 | 8-12,SC2
     case '12K': return 6;  // 1-6 | 7-12
     case '14K': return 9;  // SC,1-7,FZ | 8-14,FZ2,SC2
     case '18K': return 9;  // 1-9 | 10-18
