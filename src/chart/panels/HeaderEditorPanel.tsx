@@ -11,6 +11,7 @@
  * - Search: filter bar at the top of each tab
  */
 
+import { isBase62Headers } from '@rhythm-archive/bms-core';
 import React, { useState, useCallback, useMemo } from 'react';
 import { cn } from '../../utils';
 import { useI18n } from '../../i18n';
@@ -151,6 +152,8 @@ const HEADER_FIELDS: HeaderField[] = [
 interface MapEditorProps {
   entries: Map<string, string | number>;
   keyPrefix?: string;
+  /** `#BASE 62` object IDs are case-sensitive: keep the typed case. */
+  caseSensitiveKeys?: boolean;
   search: string;
   readOnly?: boolean;
   onSet?: (key: string, value: string) => void;
@@ -163,7 +166,7 @@ interface MapEditorProps {
 }
 
 function MapEditor({
-  entries, keyPrefix = '', search, readOnly,
+  entries, keyPrefix = '', caseSensitiveKeys = false, search, readOnly,
   onSet, onDelete,
   addKey, addValue, onAddKeyChange, onAddValueChange, onAdd,
 }: MapEditorProps) {
@@ -221,7 +224,7 @@ function MapEditor({
           <input
             type="text"
             value={addKey}
-            onChange={(e) => onAddKeyChange(e.target.value.toUpperCase())}
+            onChange={(e) => onAddKeyChange(caseSensitiveKeys ? e.target.value : e.target.value.toUpperCase())}
             placeholder={keyPrefix ? '01' : 'KEY'}
             className="w-12 px-1 py-0.5 text-xs bg-muted rounded font-mono outline-none focus:ring-1 focus:ring-primary"
             onKeyDown={(e) => { if (e.key === 'Enter' && isKeyValid) onAdd(); }}
@@ -268,6 +271,7 @@ export const HeaderEditorPanel = React.memo(function HeaderEditorPanel({
   const [search, setSearch] = useState('');
   const [rawText, setRawText] = useState('');
   const [addKey, setAddKey] = useState('');
+  const base62 = isBase62Headers(chart.headers);
   const [addValue, setAddValue] = useState('');
 
   // Field labels are derived from the i18n provider; memoize so identity is
@@ -480,6 +484,7 @@ export const HeaderEditorPanel = React.memo(function HeaderEditorPanel({
             <MapEditor
               entries={chart.headers.wav}
               keyPrefix="WAV"
+              caseSensitiveKeys={base62}
               search={search}
               readOnly={readOnly}
               onSet={onWavDefSet}
@@ -501,6 +506,7 @@ export const HeaderEditorPanel = React.memo(function HeaderEditorPanel({
             <MapEditor
               entries={chart.headers.bmp}
               keyPrefix="BMP"
+              caseSensitiveKeys={base62}
               search={search}
               readOnly={readOnly}
               onSet={onBmpDefSet}
