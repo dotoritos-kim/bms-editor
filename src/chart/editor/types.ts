@@ -47,12 +47,16 @@ export function isPresetGridSnap(value: number): value is GridSnapPreset {
   return (GRID_SNAP_OPTIONS as readonly number[]).includes(value);
 }
 
-// InstancedMesh constants
-export const MAX_VISIBLE_EDITOR_NOTES = 3000;
-export const MAX_VISIBLE_SELECTIONS = 500;
-export const MAX_VISIBLE_LONGNOTE_BODIES = 500;
-export const MAX_VISIBLE_LAYER_MARKERS = 500;
-export const MAX_ACTIVE_FLASH = 64;
+// InstancedMesh minimum capacities. Meshes are sized dynamically (next power of
+// two >= what the visible window needs, see editor/noteIndex.ts) — these are only
+// floors, never hard caps, so dense charts no longer silently drop notes.
+export const MIN_NOTE_CAPACITY = 1024;
+export const MIN_SELECTION_CAPACITY = 256;
+/** Long notes use two instances each (body + end cap). */
+export const MIN_LONGNOTE_CAPACITY = 256;
+export const MIN_LAYER_MARKER_CAPACITY = 256;
+export const MIN_ACTIVE_FLASH_CAPACITY = 64;
+export const MIN_BGM_TAIL_CAPACITY = 256;
 export const DEFAULT_NOTE_HEIGHT = 2;
 export const NOTE_PADDING = 1;
 
@@ -84,6 +88,11 @@ export interface CustomNoteColors {
   /** Canvas background color */
   background?: string;
 }
+
+/** Target of a drag-driven note type conversion (playable <-> BGM). */
+export type NoteConvertTarget =
+  | { kind: 'bgm'; channel: number }
+  | { kind: 'playable'; column: string };
 
 export interface NoteChartEditorProps {
   /** Array of notes to edit */
@@ -135,6 +144,15 @@ export interface NoteChartEditorProps {
   ) => void;
   onNoteSelect: (noteIds: string[], additive?: boolean) => void;
   onNoteUpdate?: (noteId: string, updates: Partial<EditableBMSNote>) => void;
+  /**
+   * Batch type conversion when selected notes are dragged across the playable/BGM
+   * boundary. Called once for the whole selection (a single undo step); `target`
+   * is the lane the pointer was released on — the host is expected to spread the
+   * notes over distinct BGM channels / playable columns so chords don't collapse
+   * into one lane. When omitted, the editor falls back to one `onNoteUpdate` call
+   * per note (all notes get the same channel / column).
+   */
+  onNotesConvert?: (noteIds: string[], target: NoteConvertTarget) => void;
   onBpmChange?: (beat: number, bpm: number) => void;
   onBpmRequest?: (beat: number) => void;
   onBpmEditRequest?: (bpmChange: BMSBpmChange) => void;

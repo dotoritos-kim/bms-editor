@@ -43,6 +43,7 @@ export {
 } from './NoteChartEditor';
 export type {
   NoteChartEditorProps,
+  NoteConvertTarget,
   EditorTool,
   SelectedNoteType,
   GridSnap,

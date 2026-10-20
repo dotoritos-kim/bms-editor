@@ -23,6 +23,7 @@ export {
 } from './chart';
 export type {
   NoteChartEditorProps,
+  NoteConvertTarget,
   EditorTool,
   SelectedNoteType,
   GridSnap,

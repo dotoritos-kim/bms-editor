@@ -127,6 +127,11 @@ export const Minimap = React.memo(function Minimap({
     return () => observer.disconnect();
   }, []);
 
+  // Static layer cache: background, density bar, lanes, measure lines and notes are
+  // drawn once into an offscreen canvas and only re-drawn when their inputs change.
+  // currentBeat changes (~10Hz during playback) just blit it + draw the overlay.
+  const staticLayerRef = useRef<{ canvas: HTMLCanvasElement; deps: readonly unknown[] } | null>(null);
+
   // Render minimap
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -134,114 +139,141 @@ export const Minimap = React.memo(function Minimap({
     const dpr = window.devicePixelRatio || 1;
     const cw = size.w;
     const ch = size.h;
-    canvas.width = cw * dpr;
-    canvas.height = ch * dpr;
-    canvas.style.width = `${cw}px`;
-    canvas.style.height = `${ch}px`;
+    if (canvas.width !== cw * dpr || canvas.height !== ch * dpr) {
+      canvas.width = cw * dpr;
+      canvas.height = ch * dpr;
+      canvas.style.width = `${cw}px`;
+      canvas.style.height = `${ch}px`;
+    }
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+
+    const staticDeps = [notes, totalBeats, cw, ch, dpr, laneOrder, colPosMap, laneIndexMap, densityData] as const;
+    const cached = staticLayerRef.current;
+    const stale = !cached || cached.deps.length !== staticDeps.length || cached.deps.some((d, i) => d !== staticDeps[i]);
+    let layer = cached?.canvas ?? null;
+    if (stale) {
+      layer = cached?.canvas ?? document.createElement('canvas');
+      layer.width = cw * dpr;
+      layer.height = ch * dpr;
+      const sctx = layer.getContext('2d');
+      if (sctx) {
+        sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        drawStaticLayer(sctx);
+      }
+      staticLayerRef.current = { canvas: layer, deps: staticDeps };
+    }
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (layer) ctx.drawImage(layer, 0, 0);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const safeTotalBeats = Math.max(totalBeats, 1);
     const scale = ch / safeTotalBeats;
-    const laneCount = laneOrder.length || 1;
-    const DENSITY_BAR_WIDTH = 8;
-    const hasDensity = densityData && densityData.length > 0;
-    const padX = hasDensity ? DENSITY_BAR_WIDTH + 2 : 2;
-    const laneW = Math.max((cw - padX - 2) / laneCount, 2);
 
-    // Background
-    ctx.fillStyle = '#0c0c18';
-    ctx.fillRect(0, 0, cw, ch);
+    function drawStaticLayer(ctx: CanvasRenderingContext2D) {
+      const safeTotalBeats = Math.max(totalBeats, 1);
+      const scale = ch / safeTotalBeats;
+      const laneCount = laneOrder.length || 1;
+      const DENSITY_BAR_WIDTH = 8;
+      const hasDensity = densityData && densityData.length > 0;
+      const padX = hasDensity ? DENSITY_BAR_WIDTH + 2 : 2;
+      const laneW = Math.max((cw - padX - 2) / laneCount, 2);
 
-    // ── Density heatmap bar (left 8px strip) ──────────────────────────────
-    if (hasDensity) {
-      for (const entry of densityData!) {
-        if (entry.normalized <= 0) continue;
-        const y1 = ch - entry.endBeat * scale;
-        const y2 = ch - entry.startBeat * scale;
-        const stripH = Math.max(y2 - y1, 1);
-        ctx.fillStyle = entry.color;
-        ctx.globalAlpha = 0.85;
-        ctx.fillRect(0, y1, DENSITY_BAR_WIDTH, stripH);
+      // Background
+      ctx.fillStyle = '#0c0c18';
+      ctx.fillRect(0, 0, cw, ch);
+
+      // ── Density heatmap bar (left 8px strip) ──────────────────────────────
+      if (hasDensity) {
+        for (const entry of densityData!) {
+          if (entry.normalized <= 0) continue;
+          const y1 = ch - entry.endBeat * scale;
+          const y2 = ch - entry.startBeat * scale;
+          const stripH = Math.max(y2 - y1, 1);
+          ctx.fillStyle = entry.color;
+          ctx.globalAlpha = 0.85;
+          ctx.fillRect(0, y1, DENSITY_BAR_WIDTH, stripH);
+        }
+        ctx.globalAlpha = 1;
+        // 1px separator line between density bar and note area
+        ctx.strokeStyle = '#2a2a44';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(DENSITY_BAR_WIDTH, 0);
+        ctx.lineTo(DENSITY_BAR_WIDTH, ch);
+        ctx.stroke();
+      }
+
+      // Lane backgrounds (subtle alternating)
+      for (let i = 0; i < laneOrder.length; i++) {
+        const x = padX + i * laneW;
+        ctx.fillStyle = i % 2 === 0 ? '#10101e' : '#141428';
+        ctx.globalAlpha = densityData && densityData.length > 0 ? 0.55 : 1;
+        ctx.fillRect(x, 0, laneW, ch);
       }
       ctx.globalAlpha = 1;
-      // 1px separator line between density bar and note area
+
+      // Measure lines (every 4 beats)
       ctx.strokeStyle = '#2a2a44';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(DENSITY_BAR_WIDTH, 0);
-      ctx.lineTo(DENSITY_BAR_WIDTH, ch);
-      ctx.stroke();
-    }
-
-    // Lane backgrounds (subtle alternating)
-    for (let i = 0; i < laneOrder.length; i++) {
-      const x = padX + i * laneW;
-      ctx.fillStyle = i % 2 === 0 ? '#10101e' : '#141428';
-      ctx.globalAlpha = densityData && densityData.length > 0 ? 0.55 : 1;
-      ctx.fillRect(x, 0, laneW, ch);
-    }
-    ctx.globalAlpha = 1;
-
-    // Measure lines (every 4 beats)
-    ctx.strokeStyle = '#2a2a44';
-    ctx.lineWidth = 0.5;
-    for (let beat = 0; beat <= safeTotalBeats; beat += 4) {
-      const y = ch - beat * scale;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(cw, y);
-      ctx.stroke();
-    }
-
-    // Notes — use thin lines when density is high to avoid solid color blocks
-    const noteH = Math.max(scale * 0.12, 1); // min 1px height
-    // Compute density: if average pixel gap between notes is tiny, lower opacity
-    const avgPixelPerNote = (ch * laneCount) / Math.max(notes.length, 1);
-    const denseAlpha = avgPixelPerNote < 3 ? 0.55 : avgPixelPerNote < 6 ? 0.7 : 0.9;
-
-    for (const note of notes) {
-      if (!note.column) continue;
-      const pos = colPosMap.get(note.column);
-      if (pos === undefined) continue;
-
-      const laneIdx = laneIndexMap.get(note.column) ?? 0;
-      const x = padX + laneIdx * laneW + 1.5;
-      const w = laneW - 3;
-      const y = ch - note.beat * scale - noteH;
-
-      // Color by type
-      let color: string;
-      switch (note.noteType) {
-        case 'landmine':
-          color = '#ff4444';
-          break;
-        case 'invisible':
-          color = '#555566';
-          break;
-        case 'bgm':
-          color = '#444455';
-          break;
-        default:
-          color = LANE_COLORS[note.column!] || DEFAULT_NOTE_COLOR;
+      ctx.lineWidth = 0.5;
+      for (let beat = 0; beat <= safeTotalBeats; beat += 4) {
+        const y = ch - beat * scale;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(cw, y);
+        ctx.stroke();
       }
 
-      // Long note body
-      if (note.endBeat !== undefined && note.endBeat > note.beat) {
-        const endY = ch - note.endBeat * scale;
+      // Notes — use thin lines when density is high to avoid solid color blocks
+      const noteH = Math.max(scale * 0.12, 1); // min 1px height
+      // Compute density: if average pixel gap between notes is tiny, lower opacity
+      const avgPixelPerNote = (ch * laneCount) / Math.max(notes.length, 1);
+      const denseAlpha = avgPixelPerNote < 3 ? 0.55 : avgPixelPerNote < 6 ? 0.7 : 0.9;
+
+      for (const note of notes) {
+        if (!note.column) continue;
+        const pos = colPosMap.get(note.column);
+        if (pos === undefined) continue;
+
+        const laneIdx = laneIndexMap.get(note.column) ?? 0;
+        const x = padX + laneIdx * laneW + 1.5;
+        const w = laneW - 3;
+        const y = ch - note.beat * scale - noteH;
+
+        // Color by type
+        let color: string;
+        switch (note.noteType) {
+          case 'landmine':
+            color = '#ff4444';
+            break;
+          case 'invisible':
+            color = '#555566';
+            break;
+          case 'bgm':
+            color = '#444455';
+            break;
+          default:
+            color = LANE_COLORS[note.column!] || DEFAULT_NOTE_COLOR;
+        }
+
+        // Long note body
+        if (note.endBeat !== undefined && note.endBeat > note.beat) {
+          const endY = ch - note.endBeat * scale;
+          ctx.fillStyle = color;
+          ctx.globalAlpha = 0.25;
+          ctx.fillRect(x, endY, w, y + noteH - endY);
+          ctx.globalAlpha = 1;
+        }
+
+        // Note head
         ctx.fillStyle = color;
-        ctx.globalAlpha = 0.25;
-        ctx.fillRect(x, endY, w, y + noteH - endY);
+        ctx.globalAlpha = denseAlpha;
+        ctx.fillRect(x, y, w, noteH);
         ctx.globalAlpha = 1;
       }
-
-      // Note head
-      ctx.fillStyle = color;
-      ctx.globalAlpha = denseAlpha;
-      ctx.fillRect(x, y, w, noteH);
-      ctx.globalAlpha = 1;
     }
 
     // Dimming outside viewport (darken everything except the current viewport range)

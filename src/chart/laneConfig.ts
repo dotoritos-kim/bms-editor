@@ -16,6 +16,24 @@ export interface LaneConfig {
   originalIndex: number;
 }
 
+/** Preferred (maximum) width of a single BGM lane in world px. */
+export const BGM_LANE_MAX_WIDTH = 30;
+/** Minimum width of a single BGM lane in world px. */
+export const BGM_LANE_MIN_WIDTH = 8;
+/**
+ * Width budget for the whole BGM area. Up to 16 lanes keep the full 30px width;
+ * beyond that the lanes shrink so that many simultaneous BGM notes (e.g. 40 BGM
+ * notes on one tick) do not blow up the content width and squeeze the playable
+ * lanes to a few pixels via the fit-to-width camera zoom.
+ */
+export const BGM_AREA_TARGET_WIDTH = 480;
+
+/** Per-lane BGM width for a given BGM lane count: clamp(480 / n, 8, 30). */
+export function getBgmLaneWidth(numBgmLanes: number): number {
+  if (numBgmLanes <= 0) return BGM_LANE_MAX_WIDTH;
+  return Math.max(BGM_LANE_MIN_WIDTH, Math.min(BGM_LANE_MAX_WIDTH, BGM_AREA_TARGET_WIDTH / numBgmLanes));
+}
+
 /** Generate lane configuration for a given key mode */
 export function generateLaneConfig(keyMode: KeyMode, bgmChannelCount?: number): LaneConfig[] {
   const LANE_CONFIGS: Record<
@@ -187,7 +205,6 @@ export function generateLaneConfig(keyMode: KeyMode, bgmChannelCount?: number): 
     },
   };
 
-  const BGM_LANE_WIDTH = 30;
   const BGM_GAP = 6;
 
   const config = LANE_CONFIGS[keyMode];
@@ -215,19 +232,20 @@ export function generateLaneConfig(keyMode: KeyMode, bgmChannelCount?: number): 
   // bgmChannelCount === N (>= 0) → exactly N lanes.
   const numBgmLanes = Math.max(0, bgmChannelCount ?? 0);
   if (numBgmLanes > 0) {
+    const bgmLaneWidth = getBgmLaneWidth(numBgmLanes);
     const bgmColors = ['#666666', '#7a6655', '#556677', '#667755', '#775566', '#557766', '#665577', '#776655'];
     x += BGM_GAP;
     for (let ch = 0; ch < numBgmLanes; ch++) {
       lanes.push({
         id: ch === 0 ? 'BGM' : `BGM${ch}`,
         x,
-        width: BGM_LANE_WIDTH,
+        width: bgmLaneWidth,
         color: bgmColors[ch % bgmColors.length],
         isScratch: false,
         isBgm: true,
         originalIndex: lanes.length,
       });
-      x += BGM_LANE_WIDTH;
+      x += bgmLaneWidth;
     }
   }
 

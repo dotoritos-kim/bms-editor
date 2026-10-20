@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateLaneConfig, getLaneIds, getLaneBackground } from '../src/chart/laneConfig';
+import { generateLaneConfig, getLaneIds, getLaneBackground, getBgmLaneWidth } from '../src/chart/laneConfig';
 import type { KeyMode } from '../src/chart/NoteChartViewer';
 
 /** All supported key modes */
@@ -247,5 +247,41 @@ describe('getLaneBackground', () => {
     const backgrounds = new Set(lanes.map((l) => getLaneBackground(l)));
     // 7K has alternating white and blue keys, so at least 2 distinct backgrounds
     expect(backgrounds.size).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('adaptive BGM lane width', () => {
+  it('keeps the full 30px width for up to 16 BGM lanes', () => {
+    expect(getBgmLaneWidth(1)).toBe(30);
+    expect(getBgmLaneWidth(16)).toBe(30);
+    const bgm = generateLaneConfig('7K', 16).filter((l) => l.isBgm);
+    expect(bgm.every((l) => l.width === 30)).toBe(true);
+  });
+
+  it('shrinks lanes so the BGM area stays bounded (40 lanes -> 12px each, 480px total)', () => {
+    expect(getBgmLaneWidth(40)).toBe(12);
+    const bgm = generateLaneConfig('7K', 40).filter((l) => l.isBgm);
+    expect(bgm).toHaveLength(40);
+    const area = bgm[bgm.length - 1].x + bgm[bgm.length - 1].width - bgm[0].x;
+    expect(area).toBeCloseTo(480, 6);
+  });
+
+  it('never goes below the 8px minimum', () => {
+    expect(getBgmLaneWidth(200)).toBe(8);
+  });
+
+  it('keeps BGM lanes contiguous and non-overlapping (hit-testing uses the same x/width)', () => {
+    const lanes = generateLaneConfig('14K', 37);
+    for (let i = 1; i < lanes.length; i++) {
+      const prev = lanes[i - 1];
+      const cur = lanes[i];
+      expect(cur.x).toBeGreaterThanOrEqual(prev.x + prev.width - 1e-9);
+    }
+  });
+
+  it('does not change playable lane widths', () => {
+    const without = generateLaneConfig('7K', 1).filter((l) => !l.isBgm);
+    const withMany = generateLaneConfig('7K', 60).filter((l) => !l.isBgm);
+    expect(withMany).toEqual(without);
   });
 });

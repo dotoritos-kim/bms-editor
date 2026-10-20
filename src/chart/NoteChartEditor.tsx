@@ -45,6 +45,7 @@ function defaultBeatScaleForKeyMode(keyMode: string): number {
 import { NoteHeightContext, snapBeatToGrid, getBgmLaneId, isBgmLaneId, bgmLaneIdToChannel } from './editor/editorUtils';
 import { LanesRenderer, MeasureLinesRenderer, BpmMarkersRenderer, StopMarkersRenderer, CurrentMeasureHighlight } from './editor/gridRenderers';
 import { NotesRenderer, HoverPreview, RubberBandRect, DragGhostNotes, NotePassEffect, EditorJudgmentLine } from './editor/noteRenderers';
+import { sortNotesByBeat, lowerBoundByBeat, upperBoundByBeat, findClosestNoteByBeat } from './editor/noteIndex';
 
 // Re-exports for backwards compatibility
 export { EditorToolbar } from './editor/EditorToolbar';
@@ -61,6 +62,7 @@ export type {
   SelectedNoteType,
   GridSnap,
   NoteChartEditorProps,
+  NoteConvertTarget,
   ZoomControl,
   CustomNoteColors,
   LayerKey,
@@ -91,6 +93,7 @@ function EditorCanvas({
   onNoteMove,
   onNoteSelect,
   onNoteUpdate,
+  onNotesConvert,
   onBpmChange,
   onBpmRequest,
   onBpmEditRequest,
@@ -153,6 +156,16 @@ function EditorCanvas({
 
   const CONTENT_PADDING = 85;
   const contentWidth = totalWidth + CONTENT_PADDING;
+  // Camera zoom the useFrame below converges to (fit content width, max 4x).
+  const targetZoom = size.width > 0 && contentWidth > 0 ? Math.min(size.width / contentWidth, 4) : 1;
+  // World-space viewport height in beats. Must divide by the zoom: with a wide
+  // lane layout (zoom < 1) the screen shows more beats than size.height / beatScale.
+  const viewportBeats = size.height / (targetZoom > 0 ? targetZoom : 1) / beatScale;
+
+  // Beat-sorted views for O(log N) hit-testing (shared by pointer handlers)
+  const sortedNotes = useMemo(() => sortNotesByBeat(notes), [notes]);
+  const longNotes = useMemo(() => notes.filter((n) => n.endBeat !== undefined), [notes]);
+  const laneMap = useMemo(() => new Map(lanes.map((l) => [l.id, l])), [lanes]);
 
   // Sync external scroll position
   const prevExternalScrollRef = useRef(externalScrollBeat);
@@ -246,6 +259,9 @@ function EditorCanvas({
   const contentWidthRef = useRef(contentWidth);
   contentWidthRef.current = contentWidth;
 
+  // Priority -1: update the camera before the renderers' useFrame callbacks so
+  // their camera-based viewport culling sees this frame's position (no lag).
+  // Negative priorities do not take over R3F's render loop.
   useFrame(() => {
     const orthoCamera = camera as THREE.OrthographicCamera;
     if (size.width > 0 && contentWidthRef.current > 0) {
@@ -272,7 +288,7 @@ function EditorCanvas({
       onBeatScaleChange?.(pendingBeatScaleRef.current);
       pendingBeatScaleRef.current = null;
     }
-  });
+  }, -1);
 
   // Coordinate conversion
   const _screenVec = useMemo(() => new THREE.Vector3(), []);
@@ -391,22 +407,16 @@ function EditorCanvas({
       if (!column) return null;
       const clickTolerance = 2 / beatScale;
       const bgmLane = isBgmLaneId(column);
-      return (
-        notes.find(
-          (note) => {
-            // Skip notes on locked/hidden layers
-            const noteLayer = (note.noteType || 'playable') as LayerKey;
-            if (!isLayerInteractable(noteLayer, layerConfig)) return false;
-            if (bgmLane) {
-              return note.noteType === 'bgm' && getBgmLaneId(note) === column &&
-                Math.abs(note.beat - rawBeat) < clickTolerance;
-            }
-            return note.column === column && Math.abs(note.beat - rawBeat) < clickTolerance;
-          }
-        ) || null
-      );
+      // Binary search: only notes whose head lies within the click tolerance are tested
+      return findClosestNoteByBeat(sortedNotes, rawBeat, clickTolerance, (note) => {
+        // Skip notes on locked/hidden layers
+        const noteLayer = (note.noteType || 'playable') as LayerKey;
+        if (!isLayerInteractable(noteLayer, layerConfig)) return false;
+        if (bgmLane) return note.noteType === 'bgm' && getBgmLaneId(note) === column;
+        return note.column === column;
+      });
     },
-    [notes, worldToLaneRawBeat, beatScale, layerConfig]
+    [sortedNotes, worldToLaneRawBeat, beatScale, layerConfig]
   );
 
   const findLongNoteEndAtPosition = useCallback(
@@ -416,12 +426,12 @@ function EditorCanvas({
       const rawBeat = worldY / beatScale;
       const tolerance = 3 / beatScale;
       return (
-        notes.find(
+        longNotes.find(
           (note) => note.column === column && note.endBeat !== undefined && Math.abs(note.endBeat - rawBeat) < tolerance
         ) || null
       );
     },
-    [notes, worldToLaneBeat, beatScale]
+    [longNotes, worldToLaneBeat, beatScale]
   );
 
   const findNotesInRect = useCallback(
@@ -431,17 +441,19 @@ function EditorCanvas({
       const maxX = Math.max(x1, x2);
       const minBeat = (Math.min(y1, y2) - noteHeight / 2) / beatScale;
       const maxBeat = (Math.max(y1, y2) - noteHeight / 2) / beatScale;
-      return notes
-        .filter((note) => {
-          const laneId = note.noteType === 'bgm' ? getBgmLaneId(note) : note.column;
-          const lane = lanes.find((l) => l.id === laneId);
-          if (!lane) return false;
-          const noteX = offsetX + lane.x + lane.width / 2;
-          return noteX >= minX && noteX <= maxX && note.beat >= minBeat && note.beat <= maxBeat;
-        })
-        .map((n) => n.id);
+      const ids: string[] = [];
+      const end = upperBoundByBeat(sortedNotes, maxBeat);
+      for (let i = lowerBoundByBeat(sortedNotes, minBeat); i < end; i++) {
+        const note = sortedNotes[i];
+        const laneId = note.noteType === 'bgm' ? getBgmLaneId(note) : note.column;
+        const lane = laneId !== undefined ? laneMap.get(laneId) : undefined;
+        if (!lane) continue;
+        const noteX = offsetX + lane.x + lane.width / 2;
+        if (noteX >= minX && noteX <= maxX) ids.push(note.id);
+      }
+      return ids;
     },
-    [notes, lanes, offsetX, beatScale]
+    [sortedNotes, laneMap, offsetX, beatScale]
   );
 
   // Event handlers
@@ -500,7 +512,10 @@ function EditorCanvas({
         const tolerance = 16 / beatScale; // 16px snap range
         let nearest: number | null = null;
         let nearestDist = tolerance;
-        for (const n of notes) {
+        // Binary search: only notes within the snap tolerance of the pointer
+        const end = upperBoundByBeat(sortedNotes, rawBeat + tolerance);
+        for (let i = lowerBoundByBeat(sortedNotes, rawBeat - tolerance); i < end; i++) {
+          const n = sortedNotes[i];
           if (n.column !== column && n.noteType !== 'bgm') continue;
           const dist = Math.abs(n.beat - rawBeat);
           if (dist < nearestDist && dist > 0.001) {
@@ -513,7 +528,7 @@ function EditorCanvas({
         setSnapGuideBeat(null);
       }
     },
-    [screenToWorld, worldToLaneBeat, isDragging, dragStart, rubberBand, activeTool, lanes, offsetX, resizing, notes, beatScale, gridSnap, totalHeight, onNoteHover, findNoteAtPosition, lnDragCreate]
+    [screenToWorld, worldToLaneBeat, isDragging, dragStart, rubberBand, activeTool, lanes, offsetX, resizing, notes, sortedNotes, beatScale, gridSnap, totalHeight, onNoteHover, findNoteAtPosition, lnDragCreate]
   );
 
   const handlePointerDown = useCallback(
@@ -728,8 +743,13 @@ function EditorCanvas({
             }
             // Change type to BGM with target channel
             const targetChannel = bgmLaneIdToChannel(newColumn);
-            for (const noteId of selectedNotes) {
-              onNoteUpdate?.(noteId, { noteType: 'bgm', column: undefined, bgmChannel: targetChannel });
+            if (onNotesConvert) {
+              // One batched call (single undo step); the host spreads notes over distinct channels
+              onNotesConvert(Array.from(selectedNotes), { kind: 'bgm', channel: targetChannel });
+            } else {
+              for (const noteId of selectedNotes) {
+                onNoteUpdate?.(noteId, { noteType: 'bgm', column: undefined, bgmChannel: targetChannel });
+              }
             }
           } else if (startIsBgm && !endIsBgm) {
             // BGM → Playable: convert note type
@@ -737,8 +757,13 @@ function EditorCanvas({
             if (Math.abs(beatDelta) > 0.01) {
               onNoteMove(Array.from(selectedNotes), { beat: beatDelta }, gridSnap);
             }
-            for (const noteId of selectedNotes) {
-              onNoteUpdate?.(noteId, { noteType: 'playable', column: newColumn, bgmChannel: undefined });
+            if (onNotesConvert) {
+              // One batched call (single undo step); the host spreads notes over distinct columns
+              onNotesConvert(Array.from(selectedNotes), { kind: 'playable', column: newColumn });
+            } else {
+              for (const noteId of selectedNotes) {
+                onNoteUpdate?.(noteId, { noteType: 'playable', column: newColumn, bgmChannel: undefined });
+              }
             }
           } else {
             // Normal move within same type
@@ -755,7 +780,7 @@ function EditorCanvas({
 
       setIsDragging(false); setDragStart(null); setDragDelta(null);
     },
-    [isDragging, dragStart, selectedNotes, screenToWorld, worldToLaneBeat, onNoteMove, onNoteUpdate, rubberBand, resizing, notes, beatScale, gridSnap, findNotesInRect, onNoteSelect, lanes, lnDragCreate, currentKeysound, onNoteAdd]
+    [isDragging, dragStart, selectedNotes, screenToWorld, worldToLaneBeat, onNoteMove, onNoteUpdate, onNotesConvert, rubberBand, resizing, notes, beatScale, gridSnap, findNotesInRect, onNoteSelect, lanes, lnDragCreate, currentKeysound, onNoteAdd]
   );
 
   return (
@@ -766,8 +791,8 @@ function EditorCanvas({
       </mesh>
       <LanesRenderer lanes={lanes} totalHeight={totalHeight} keyMode={keyMode} />
       <CurrentMeasureHighlight currentBeat={scrollBeat} totalWidth={totalWidth} beatScale={beatScale} timeSignatures={timeSignatures} />
-      <MeasureLinesRenderer totalBeats={totalBeats} beatScale={beatScale} totalWidth={totalWidth} gridSnap={gridSnap} scrollBeat={scrollBeat} viewportBeats={size.height / beatScale} timeSignatures={timeSignatures} gridSnapOverrides={gridSnapOverrides} />
-      <NotesRenderer notes={notes} lanes={lanes} beatScale={beatScale} selectedNotes={selectedNotes} offsetX={offsetX} scrollBeat={scrollBeat} viewportBeats={size.height / beatScale} scrollBeatImperativeRef={scrollBeatImperativeRef} layerConfig={layerConfig} highlightKeysound={highlightKeysound} customColors={customColors} />
+      <MeasureLinesRenderer totalBeats={totalBeats} beatScale={beatScale} totalWidth={totalWidth} gridSnap={gridSnap} scrollBeat={scrollBeat} viewportBeats={viewportBeats} timeSignatures={timeSignatures} gridSnapOverrides={gridSnapOverrides} />
+      <NotesRenderer notes={notes} lanes={lanes} beatScale={beatScale} selectedNotes={selectedNotes} offsetX={offsetX} scrollBeat={scrollBeat} viewportBeats={viewportBeats} scrollBeatImperativeRef={scrollBeatImperativeRef} layerConfig={layerConfig} highlightKeysound={highlightKeysound} customColors={customColors} />
       {activeTool === 'addNote' && !lnDragCreate && hoverPosition && (
         <HoverPreview beat={hoverPosition.beat} column={hoverPosition.column} lanes={lanes} beatScale={beatScale} offsetX={offsetX} isSilent={currentKeysound === '00'} isLongNote={selectedNoteType === 'longNote'} />
       )}
@@ -805,8 +830,8 @@ function EditorCanvas({
       {isDragging && dragDelta && selectedNotes.size > 0 && (
         <DragGhostNotes notes={notes} selectedNotes={selectedNotes} lanes={lanes} beatScale={beatScale} offsetX={offsetX} beatDelta={dragDelta.beatDelta} columnDelta={dragDelta.columnDelta} />
       )}
-      {bpmChanges && <BpmMarkersRenderer bpmChanges={bpmChanges} beatScale={beatScale} totalWidth={totalWidth} scrollBeat={scrollBeat} viewportBeats={size.height / beatScale} />}
-      {stopEvents && stopEvents.length > 0 && <StopMarkersRenderer stopEvents={stopEvents} beatScale={beatScale} totalWidth={totalWidth} scrollBeat={scrollBeat} viewportBeats={size.height / beatScale} />}
+      {bpmChanges && <BpmMarkersRenderer bpmChanges={bpmChanges} beatScale={beatScale} totalWidth={totalWidth} scrollBeat={scrollBeat} viewportBeats={viewportBeats} />}
+      {stopEvents && stopEvents.length > 0 && <StopMarkersRenderer stopEvents={stopEvents} beatScale={beatScale} totalWidth={totalWidth} scrollBeat={scrollBeat} viewportBeats={viewportBeats} />}
       {scrollBeatImperativeRef && (
         <>
           <EditorJudgmentLine scrollBeatImperativeRef={scrollBeatImperativeRef} beatScale={beatScale} totalWidth={totalWidth} />
@@ -823,7 +848,7 @@ export const NoteChartEditor = React.memo(function NoteChartEditor({
   activeTool, gridSnap, snapEnabled, gridSnapOverrides, layerConfig, selectedNotes, selectedNoteType, currentKeysound,
   bpmChanges, stopEvents, baseBpm = 120, timeSignatures,
   bgmChannelCount,
-  onNoteAdd, onNoteDelete, onNoteMove, onNoteSelect, onNoteUpdate,
+  onNoteAdd, onNoteDelete, onNoteMove, onNoteSelect, onNoteUpdate, onNotesConvert,
   onBpmChange, onBpmRequest, onBpmEditRequest, onStopRequest, onStopEditRequest, onStopDelete,
   onKeysoundAssign, onDropKeysound, onNoteHover,
   highlightKeysound,
@@ -881,7 +906,7 @@ export const NoteChartEditor = React.memo(function NoteChartEditor({
           selectedNoteType={selectedNoteType} currentKeysound={currentKeysound}
           bpmChanges={bpmChanges} stopEvents={stopEvents} baseBpm={baseBpm} timeSignatures={timeSignatures}
           onNoteAdd={onNoteAdd} onNoteDelete={onNoteDelete} onNoteMove={onNoteMove}
-          onNoteSelect={onNoteSelect} onNoteUpdate={onNoteUpdate}
+          onNoteSelect={onNoteSelect} onNoteUpdate={onNoteUpdate} onNotesConvert={onNotesConvert}
           onBpmChange={onBpmChange} onBpmRequest={onBpmRequest} onBpmEditRequest={onBpmEditRequest}
           onStopRequest={onStopRequest} onStopEditRequest={onStopEditRequest} onStopDelete={onStopDelete}
           onKeysoundAssign={onKeysoundAssign} onDropKeysound={onDropKeysound} onNoteHover={onNoteHover}

@@ -5,24 +5,49 @@
  * EditorJudgmentLine, NotePassEffect
  */
 
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { EditableBMSNote } from '@rhythm-archive/bms-core';
 import type { LaneConfig } from '../laneConfig';
 import {
-  MAX_VISIBLE_EDITOR_NOTES,
-  MAX_VISIBLE_SELECTIONS,
-  MAX_VISIBLE_LONGNOTE_BODIES,
-  MAX_VISIBLE_LAYER_MARKERS,
-  MAX_ACTIVE_FLASH,
+  MIN_NOTE_CAPACITY,
+  MIN_SELECTION_CAPACITY,
+  MIN_LONGNOTE_CAPACITY,
+  MIN_LAYER_MARKER_CAPACITY,
+  MIN_ACTIVE_FLASH_CAPACITY,
+  MIN_BGM_TAIL_CAPACITY,
   NOTE_PADDING,
 } from './types';
 import type { CustomNoteColors, LayerConfig, LayerKey } from './types';
 import { useNoteHeight, getLaneColorHex, getNoteColorHex, getSelectionColorHex, getBgmLaneId, _dummy, _color } from './editorUtils';
 import { TextLabels } from './gridRenderers';
+import {
+  LN_LOOK_BACK,
+  VIEWPORT_CULL_MARGIN,
+  instanceCapacity,
+  lowerBoundByBeat,
+  upperBoundByBeat,
+  maxNotesInBeatWindow,
+  sortNotesByBeat,
+} from './noteIndex';
 
-/** Note renderer (InstancedMesh-based, viewport culling + dirty check) */
+/** BGM tails look back this many beats (WAV duration rarely exceeds it). */
+const BGM_LOOK_BACK = 20;
+
+/** Instance counts per NotesRenderer mesh. */
+interface NoteMeshCounts {
+  notes: number;
+  selection: number;
+  longNotes: number;
+  markers: number;
+  flash: number;
+  bgmTails: number;
+}
+
+const ZERO_COUNTS: NoteMeshCounts = { notes: 0, selection: 0, longNotes: 0, markers: 0, flash: 0, bgmTails: 0 };
+
+/** Note renderer (InstancedMesh-based, viewport culling + dirty check, dynamically sized) */
 export const NotesRenderer = React.memo(function NotesRenderer({
   notes,
   lanes,
@@ -69,10 +94,53 @@ export const NotesRenderer = React.memo(function NotesRenderer({
   );
 
   // Sort ascending by beat — re-sorts only when the notes reference changes (O(N log N) once → O(log N) per frame)
-  const sortedNotes = useMemo(
-    () => [...notes].sort((a, b) => a.beat - b.beat),
-    [notes]
+  const sortedNotes = useMemo(() => sortNotesByBeat(notes), [notes]);
+
+  // ── Dynamic capacity ──────────────────────────────────────────────────────
+  // Estimate how many instances the densest culling window needs so meshes are
+  // sized up-front; anything the estimate misses (long notes reaching in from
+  // below, layer filters, etc.) is caught by the overflow check in useFrame,
+  // which grows the meshes instead of silently dropping notes.
+  const cullWindowBeats = viewportBeats * (1 + 2 * VIEWPORT_CULL_MARGIN);
+  const estimate = useMemo<NoteMeshCounts>(() => {
+    const windowNotes = maxNotesInBeatWindow(sortedNotes, cullWindowBeats);
+    let lnCount = 0;
+    let markerCount = 0;
+    let bgmCount = 0;
+    for (const n of sortedNotes) {
+      if (n.endBeat !== undefined) lnCount++;
+      if (n.additionalKeysounds && n.additionalKeysounds.length > 0) markerCount++;
+      if (n.noteType === 'bgm') bgmCount++;
+    }
+    return {
+      notes: windowNotes,
+      selection: 0,
+      longNotes: 2 * Math.min(lnCount, windowNotes),
+      markers: Math.min(markerCount, windowNotes),
+      flash: 0,
+      bgmTails: Math.min(bgmCount, windowNotes),
+    };
+  }, [sortedNotes, cullWindowBeats]);
+
+  const [grown, setGrown] = useState<NoteMeshCounts>(ZERO_COUNTS);
+  const growPendingRef = useRef(false);
+
+  const notesCap = instanceCapacity(Math.max(estimate.notes, grown.notes), MIN_NOTE_CAPACITY);
+  // Visible selected notes can never exceed min(selection size, visible notes)
+  const selectionCap = instanceCapacity(
+    Math.max(Math.min(selectedNotes.size, estimate.notes), grown.selection),
+    MIN_SELECTION_CAPACITY
   );
+  const longNoteCap = instanceCapacity(Math.max(estimate.longNotes, grown.longNotes), MIN_LONGNOTE_CAPACITY);
+  const markerCap = instanceCapacity(Math.max(estimate.markers, grown.markers), MIN_LAYER_MARKER_CAPACITY);
+  const flashCap = instanceCapacity(grown.flash, MIN_ACTIVE_FLASH_CAPACITY);
+  const bgmTailCap = instanceCapacity(Math.max(estimate.bgmTails, grown.bgmTails), MIN_BGM_TAIL_CAPACITY);
+  const capsKey = `${notesCap}|${selectionCap}|${longNoteCap}|${markerCap}|${flashCap}|${bgmTailCap}`;
+
+  // A capacity change remounts the meshes; allow the next overflow report.
+  useEffect(() => {
+    growPendingRef.current = false;
+  }, [capsKey]);
 
   const prevDataRef = useRef<{
     notes: EditableBMSNote[];
@@ -83,15 +151,27 @@ export const NotesRenderer = React.memo(function NotesRenderer({
     highlightKeysound: string | null | undefined;
     customColors: CustomNoteColors | undefined;
     layerConfig: typeof layerConfig;
-  }>({ notes: [], selectedNotes: new Set(), beatScale: 0, scrollBeat: -1, viewportBeats: 0, highlightKeysound: undefined, customColors: undefined, layerConfig: undefined });
+    capsKey: string;
+    camY: number;
+    camZoom: number;
+    camHalfH: number;
+  }>({ notes: [], selectedNotes: new Set(), beatScale: 0, scrollBeat: -1, viewportBeats: 0, highlightKeysound: undefined, customColors: undefined, layerConfig: undefined, capsKey: '', camY: NaN, camZoom: NaN, camHalfH: NaN });
 
-  useFrame(() => {
+  useFrame((state) => {
     const notesMesh = notesMeshRef.current;
     const selectionMesh = selectionMeshRef.current;
     const longNoteMesh = longNoteMeshRef.current;
     const layerMarkerMesh = layerMarkerMeshRef.current;
     const activeFlashMesh = activeFlashMeshRef.current;
     if (!notesMesh || !selectionMesh || !longNoteMesh || !layerMarkerMesh) return;
+
+    // Visible beat range straight from the camera (accounts for the fit-to-width
+    // zoom, which the scrollBeat/viewportBeats props alone do not).
+    const cam = state.camera as THREE.OrthographicCamera;
+    const isOrtho = cam.isOrthographicCamera === true;
+    const camZoom = isOrtho ? cam.zoom || 1 : 1;
+    const camHalfH = isOrtho ? (cam.top - cam.bottom) / 2 / camZoom : 0;
+    const camY = cam.position.y;
 
     const isPlaying = scrollBeatImperativeRef?.current !== undefined;
     const prev = prevDataRef.current;
@@ -104,16 +184,30 @@ export const NotesRenderer = React.memo(function NotesRenderer({
       prev.viewportBeats === viewportBeats &&
       prev.highlightKeysound === highlightKeysound &&
       prev.customColors === customColors &&
-      prev.layerConfig === layerConfig
+      prev.layerConfig === layerConfig &&
+      prev.capsKey === capsKey &&
+      Math.abs(prev.camY - camY) < 0.5 &&
+      Math.abs(prev.camZoom - camZoom) < 1e-4 &&
+      Math.abs(prev.camHalfH - camHalfH) < 0.5
     ) {
       return;
     }
-    prevDataRef.current = { notes, selectedNotes, beatScale, scrollBeat, viewportBeats, highlightKeysound, customColors, layerConfig };
+    prevDataRef.current = { notes, selectedNotes, beatScale, scrollBeat, viewportBeats, highlightKeysound, customColors, layerConfig, capsKey, camY, camZoom, camHalfH };
     const playBeat = scrollBeatImperativeRef?.current;
 
-    const buffer = viewportBeats * 0.5;
-    const minBeat = scrollBeat - buffer;
-    const maxBeat = scrollBeat + viewportBeats + buffer;
+    // Visible range + small margin (VIEWPORT_CULL_MARGIN of the visible span on each side)
+    let visMin: number;
+    let visMax: number;
+    if (isOrtho && camHalfH > 0 && beatScale > 0) {
+      visMin = (camY - camHalfH) / beatScale;
+      visMax = (camY + camHalfH) / beatScale;
+    } else {
+      visMin = scrollBeat;
+      visMax = scrollBeat + viewportBeats;
+    }
+    const margin = (visMax - visMin) * VIEWPORT_CULL_MARGIN + (beatScale > 0 ? noteHeight / beatScale : 0);
+    const minBeat = visMin - margin;
+    const maxBeat = visMax + margin;
 
     let noteCount = 0;
     let selectionCount = 0;
@@ -121,18 +215,12 @@ export const NotesRenderer = React.memo(function NotesRenderer({
     let layerMarkerCount = 0;
     let activeFlashCount = 0;
 
-    // Binary search to iterate only the viewport range (long notes covered by up to 64-beat look-back)
-    const LN_LOOK_BACK = 64;
-    let lo = 0, hi = sortedNotes.length;
-    while (lo < hi) { const mid = (lo + hi) >> 1; if (sortedNotes[mid].beat < minBeat - LN_LOOK_BACK) lo = mid + 1; else hi = mid; }
-    const noteStartIdx = lo;
-    lo = noteStartIdx; hi = sortedNotes.length;
-    while (lo < hi) { const mid = (lo + hi) >> 1; if (sortedNotes[mid].beat <= maxBeat) lo = mid + 1; else hi = mid; }
-    const noteEndIdx = lo;
+    // Binary search to iterate only the viewport range (long notes covered by up to LN_LOOK_BACK beats)
+    const noteStartIdx = lowerBoundByBeat(sortedNotes, minBeat - LN_LOOK_BACK);
+    const noteEndIdx = upperBoundByBeat(sortedNotes, maxBeat);
 
     for (let ni = noteStartIdx; ni < noteEndIdx; ni++) {
       const note = sortedNotes[ni];
-      if (noteCount >= MAX_VISIBLE_EDITOR_NOTES) break;
 
       // Layer visibility filter
       const noteLayer = (note.noteType || 'playable') as LayerKey;
@@ -140,7 +228,7 @@ export const NotesRenderer = React.memo(function NotesRenderer({
       if (layerSettings && !layerSettings.visible) continue;
 
       const noteMaxBeat = note.endBeat ?? note.beat;
-      if (noteMaxBeat < minBeat) continue; // LN ends before the look-back window starts
+      if (noteMaxBeat < minBeat) continue; // ends before the visible window starts
 
       const laneId = note.noteType === 'bgm' ? getBgmLaneId(note) : (note.column || '');
       const lane = laneMap.get(laneId);
@@ -157,122 +245,116 @@ export const NotesRenderer = React.memo(function NotesRenderer({
       const layerOpacity = layerSettings?.opacity ?? 1.0;
 
       // Note body
-      _dummy.position.set(x, y, 0);
-      _dummy.scale.set(lane.width - NOTE_PADDING * 2, noteHeight, 1);
-      _dummy.updateMatrix();
-      notesMesh.setMatrixAt(noteCount, _dummy.matrix);
-      _color.setHex(colorHex);
-      if (layerOpacity < 1.0) _color.multiplyScalar(layerOpacity);
-      notesMesh.setColorAt(noteCount, _color);
+      if (noteCount < notesCap) {
+        _dummy.position.set(x, y, 0);
+        _dummy.scale.set(lane.width - NOTE_PADDING * 2, noteHeight, 1);
+        _dummy.updateMatrix();
+        notesMesh.setMatrixAt(noteCount, _dummy.matrix);
+        _color.setHex(colorHex);
+        if (layerOpacity < 1.0) _color.multiplyScalar(layerOpacity);
+        notesMesh.setColorAt(noteCount, _color);
+      }
+      noteCount++;
 
       // Selection highlight
-      if (selectedNotes.has(note.id) && selectionCount < MAX_VISIBLE_SELECTIONS) {
-        _dummy.position.set(x, y, 1);
-        _dummy.scale.set(lane.width, noteHeight + 2, 1);
-        _dummy.updateMatrix();
-        selectionMesh.setMatrixAt(selectionCount, _dummy.matrix);
-        _color.setHex(getSelectionColorHex(customColors));
-        selectionMesh.setColorAt(selectionCount, _color);
+      if (selectedNotes.has(note.id)) {
+        if (selectionCount < selectionCap) {
+          _dummy.position.set(x, y, 1);
+          _dummy.scale.set(lane.width, noteHeight + 2, 1);
+          _dummy.updateMatrix();
+          selectionMesh.setMatrixAt(selectionCount, _dummy.matrix);
+          _color.setHex(getSelectionColorHex(customColors));
+          selectionMesh.setColorAt(selectionCount, _color);
+        }
         selectionCount++;
       }
 
-      // Long note body
-      if (note.endBeat !== undefined && longNoteCount < MAX_VISIBLE_LONGNOTE_BODIES) {
+      // Long note body + end cap (two instances)
+      if (note.endBeat !== undefined) {
         const endY = note.endBeat * beatScale + noteHeight / 2;
-        const bodyY = (y + endY) / 2;
-        const bodyHeight = Math.abs(endY - y);
+        if (longNoteCount + 1 < longNoteCap) {
+          const bodyY = (y + endY) / 2;
+          const bodyHeight = Math.abs(endY - y);
 
-        // Body
-        _dummy.position.set(x, bodyY, -0.5);
-        _dummy.scale.set(lane.width - NOTE_PADDING * 2, bodyHeight, 1);
-        _dummy.updateMatrix();
-        longNoteMesh.setMatrixAt(longNoteCount, _dummy.matrix);
-        _color.setHex(colorHex);
-        longNoteMesh.setColorAt(longNoteCount, _color);
-        longNoteCount++;
-
-        // End cap
-        if (longNoteCount < MAX_VISIBLE_LONGNOTE_BODIES) {
-          _dummy.position.set(x, endY, 0);
-          _dummy.scale.set(lane.width - NOTE_PADDING * 2, noteHeight, 1);
+          _dummy.position.set(x, bodyY, -0.5);
+          _dummy.scale.set(lane.width - NOTE_PADDING * 2, bodyHeight, 1);
           _dummy.updateMatrix();
           longNoteMesh.setMatrixAt(longNoteCount, _dummy.matrix);
           _color.setHex(colorHex);
           longNoteMesh.setColorAt(longNoteCount, _color);
-          longNoteCount++;
+
+          _dummy.position.set(x, endY, 0);
+          _dummy.scale.set(lane.width - NOTE_PADDING * 2, noteHeight, 1);
+          _dummy.updateMatrix();
+          longNoteMesh.setMatrixAt(longNoteCount + 1, _dummy.matrix);
+          longNoteMesh.setColorAt(longNoteCount + 1, _color);
         }
+        longNoteCount += 2;
       }
 
       // Multi-keysound layer marker
-      if (note.additionalKeysounds && note.additionalKeysounds.length > 0 && layerMarkerCount < MAX_VISIBLE_LAYER_MARKERS) {
-        _dummy.position.set(x + lane.width / 2 - 3, y, 1.5);
-        _dummy.scale.set(5, 5, 1);
-        _dummy.rotation.z = Math.PI / 4;
-        _dummy.updateMatrix();
-        layerMarkerMesh.setMatrixAt(layerMarkerCount, _dummy.matrix);
-        _color.setHex(0xffdd00);
-        layerMarkerMesh.setColorAt(layerMarkerCount, _color);
+      if (note.additionalKeysounds && note.additionalKeysounds.length > 0) {
+        if (layerMarkerCount < markerCap) {
+          _dummy.position.set(x + lane.width / 2 - 3, y, 1.5);
+          _dummy.scale.set(5, 5, 1);
+          _dummy.rotation.z = Math.PI / 4;
+          _dummy.updateMatrix();
+          layerMarkerMesh.setMatrixAt(layerMarkerCount, _dummy.matrix);
+          _color.setHex(0xffdd00);
+          layerMarkerMesh.setColorAt(layerMarkerCount, _color);
+          _dummy.rotation.z = 0;
+        }
         layerMarkerCount++;
-        _dummy.rotation.z = 0;
       }
 
       // Active note flash near the judgment line
-      if (activeFlashMesh && playBeat !== undefined && activeFlashCount < MAX_ACTIVE_FLASH) {
+      if (activeFlashMesh && playBeat !== undefined) {
         const dist = Math.abs(note.beat - playBeat);
         if (dist < 0.5) {
-          const alpha = 1 - dist * 2;
-          _dummy.position.set(x, y, 0.5);
-          _dummy.scale.set(lane.width + 4, noteHeight + 4, 1);
-          _dummy.updateMatrix();
-          activeFlashMesh.setMatrixAt(activeFlashCount, _dummy.matrix);
-          _color.setHex(laneColorHex.normal);
-          _color.multiplyScalar(alpha);
-          activeFlashMesh.setColorAt(activeFlashCount, _color);
+          if (activeFlashCount < flashCap) {
+            const alpha = 1 - dist * 2;
+            _dummy.position.set(x, y, 0.5);
+            _dummy.scale.set(lane.width + 4, noteHeight + 4, 1);
+            _dummy.updateMatrix();
+            activeFlashMesh.setMatrixAt(activeFlashCount, _dummy.matrix);
+            _color.setHex(laneColorHex.normal);
+            _color.multiplyScalar(alpha);
+            activeFlashMesh.setColorAt(activeFlashCount, _color);
+          }
           activeFlashCount++;
         }
       }
-
-      noteCount++;
     }
 
-    notesMesh.count = noteCount;
+    notesMesh.count = Math.min(noteCount, notesCap);
     notesMesh.instanceMatrix.needsUpdate = true;
     if (notesMesh.instanceColor) notesMesh.instanceColor.needsUpdate = true;
 
-    selectionMesh.count = selectionCount;
+    selectionMesh.count = Math.min(selectionCount, selectionCap);
     selectionMesh.instanceMatrix.needsUpdate = true;
     if (selectionMesh.instanceColor) selectionMesh.instanceColor.needsUpdate = true;
 
-    longNoteMesh.count = longNoteCount;
+    longNoteMesh.count = Math.min(longNoteCount, longNoteCap);
     longNoteMesh.instanceMatrix.needsUpdate = true;
     if (longNoteMesh.instanceColor) longNoteMesh.instanceColor.needsUpdate = true;
 
-    layerMarkerMesh.count = layerMarkerCount;
+    layerMarkerMesh.count = Math.min(layerMarkerCount, markerCap);
     layerMarkerMesh.instanceMatrix.needsUpdate = true;
     if (layerMarkerMesh.instanceColor) layerMarkerMesh.instanceColor.needsUpdate = true;
 
     if (activeFlashMesh) {
-      activeFlashMesh.count = activeFlashCount;
+      activeFlashMesh.count = Math.min(activeFlashCount, flashCap);
       activeFlashMesh.instanceMatrix.needsUpdate = true;
       if (activeFlashMesh.instanceColor) activeFlashMesh.instanceColor.needsUpdate = true;
     }
 
     // BGM duration tails
+    let tailCount = 0;
     const bgmTailMesh = bgmTailMeshRef.current;
     if (bgmTailMesh && wavDurations && wavDurations.size > 0) {
-      let tailCount = 0;
-      const MAX_TAILS = 200;
-      // Binary search for BGM tails (20-beat look-back for WAV duration)
-      const BGM_LOOK_BACK = 20;
-      let bgmLo = 0, bgmHi = sortedNotes.length;
-      while (bgmLo < bgmHi) { const mid = (bgmLo + bgmHi) >> 1; if (sortedNotes[mid].beat < minBeat - BGM_LOOK_BACK) bgmLo = mid + 1; else bgmHi = mid; }
-      const bgmStartIdx = bgmLo;
-      bgmLo = bgmStartIdx; bgmHi = sortedNotes.length;
-      while (bgmLo < bgmHi) { const mid = (bgmLo + bgmHi) >> 1; if (sortedNotes[mid].beat <= maxBeat) bgmLo = mid + 1; else bgmHi = mid; }
-      const bgmEndIdx = bgmLo;
-      for (let bi = bgmStartIdx; bi < bgmEndIdx; bi++) {
+      const bgmStartIdx = lowerBoundByBeat(sortedNotes, minBeat - BGM_LOOK_BACK);
+      for (let bi = bgmStartIdx; bi < noteEndIdx; bi++) {
         const note = sortedNotes[bi];
-        if (tailCount >= MAX_TAILS) break;
         if (note.noteType !== 'bgm') continue;
         const dur = wavDurations.get(note.keysound);
         if (!dur || dur <= 0) continue;
@@ -283,55 +365,92 @@ export const NotesRenderer = React.memo(function NotesRenderer({
 
         // Convert seconds to beats using baseBpm
         const durationBeats = (dur / 60) * baseBpm;
-        const startY = note.beat * beatScale + noteHeight / 2;
-        const endY = (note.beat + durationBeats) * beatScale + noteHeight / 2;
-        const tailHeight = endY - startY;
-        const centerY = (startY + endY) / 2;
-        const x = offsetX + lane.x + lane.width / 2;
+        if (note.beat + durationBeats < minBeat) continue;
+        if (tailCount < bgmTailCap) {
+          const startY = note.beat * beatScale + noteHeight / 2;
+          const endY = (note.beat + durationBeats) * beatScale + noteHeight / 2;
+          const tailHeight = endY - startY;
+          const centerY = (startY + endY) / 2;
+          const x = offsetX + lane.x + lane.width / 2;
 
-        _dummy.position.set(x, centerY, -1);
-        _dummy.scale.set(lane.width - NOTE_PADDING * 2 - 2, tailHeight, 1);
-        _dummy.updateMatrix();
-        bgmTailMesh.setMatrixAt(tailCount, _dummy.matrix);
-        _color.setHex(0x666666);
-        bgmTailMesh.setColorAt(tailCount, _color);
+          _dummy.position.set(x, centerY, -1);
+          _dummy.scale.set(Math.max(1, lane.width - NOTE_PADDING * 2 - 2), tailHeight, 1);
+          _dummy.updateMatrix();
+          bgmTailMesh.setMatrixAt(tailCount, _dummy.matrix);
+          _color.setHex(0x666666);
+          bgmTailMesh.setColorAt(tailCount, _color);
+        }
         tailCount++;
       }
-      bgmTailMesh.count = tailCount;
+      bgmTailMesh.count = Math.min(tailCount, bgmTailCap);
       bgmTailMesh.instanceMatrix.needsUpdate = true;
       if (bgmTailMesh.instanceColor) bgmTailMesh.instanceColor.needsUpdate = true;
     } else if (bgmTailMesh) {
       bgmTailMesh.count = 0;
       bgmTailMesh.instanceMatrix.needsUpdate = true;
     }
+
+    // Overflow → grow the meshes (power-of-two) on the next render instead of dropping notes
+    if (
+      !growPendingRef.current && (
+        noteCount > notesCap ||
+        selectionCount > selectionCap ||
+        longNoteCount > longNoteCap ||
+        layerMarkerCount > markerCap ||
+        activeFlashCount > flashCap ||
+        tailCount > bgmTailCap
+      )
+    ) {
+      growPendingRef.current = true;
+      const needed: NoteMeshCounts = {
+        notes: noteCount,
+        selection: selectionCount,
+        longNotes: longNoteCount,
+        markers: layerMarkerCount,
+        flash: activeFlashCount,
+        bgmTails: tailCount,
+      };
+      setGrown((p) => ({
+        notes: Math.max(p.notes, needed.notes),
+        selection: Math.max(p.selection, needed.selection),
+        longNotes: Math.max(p.longNotes, needed.longNotes),
+        markers: Math.max(p.markers, needed.markers),
+        flash: Math.max(p.flash, needed.flash),
+        bgmTails: Math.max(p.bgmTails, needed.bgmTails),
+      }));
+    }
   });
 
-  // Initialization: set default colors
+  // Initialization: set default colors (re-run whenever a mesh is re-created at a new capacity)
   useEffect(() => {
     const meshConfigs: [React.RefObject<THREE.InstancedMesh | null>, number][] = [
-      [notesMeshRef, MAX_VISIBLE_EDITOR_NOTES],
-      [selectionMeshRef, MAX_VISIBLE_SELECTIONS],
-      [longNoteMeshRef, MAX_VISIBLE_LONGNOTE_BODIES],
-      [layerMarkerMeshRef, MAX_VISIBLE_LAYER_MARKERS],
-      [activeFlashMeshRef, MAX_ACTIVE_FLASH],
-      [bgmTailMeshRef, 200],
+      [notesMeshRef, notesCap],
+      [selectionMeshRef, selectionCap],
+      [longNoteMeshRef, longNoteCap],
+      [layerMarkerMeshRef, markerCap],
+      [activeFlashMeshRef, flashCap],
+      [bgmTailMeshRef, bgmTailCap],
     ];
+    _color.setHex(0xffffff);
     for (const [ref, max] of meshConfigs) {
       const mesh = ref.current;
       if (!mesh) continue;
-      _color.setHex(0xffffff);
       for (let i = 0; i < max; i++) {
         mesh.setColorAt(i, _color);
       }
+      mesh.count = 0;
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     }
-  }, []);
+    // Force the next frame to rebuild instance data into the (possibly new) meshes
+    prevDataRef.current = { ...prevDataRef.current, capsKey: '' };
+  }, [notesCap, selectionCap, longNoteCap, markerCap, flashCap, bgmTailCap]);
 
   return (
     <group>
       <instancedMesh
+        key={`notes-${notesCap}`}
         ref={notesMeshRef}
-        args={[undefined, undefined, MAX_VISIBLE_EDITOR_NOTES]}
+        args={[undefined, undefined, notesCap]}
         frustumCulled={false}
       >
         <planeGeometry args={[1, 1]} />
@@ -339,8 +458,9 @@ export const NotesRenderer = React.memo(function NotesRenderer({
       </instancedMesh>
 
       <instancedMesh
+        key={`sel-${selectionCap}`}
         ref={selectionMeshRef}
-        args={[undefined, undefined, MAX_VISIBLE_SELECTIONS]}
+        args={[undefined, undefined, selectionCap]}
         frustumCulled={false}
       >
         <planeGeometry args={[1, 1]} />
@@ -348,8 +468,9 @@ export const NotesRenderer = React.memo(function NotesRenderer({
       </instancedMesh>
 
       <instancedMesh
+        key={`ln-${longNoteCap}`}
         ref={longNoteMeshRef}
-        args={[undefined, undefined, MAX_VISIBLE_LONGNOTE_BODIES]}
+        args={[undefined, undefined, longNoteCap]}
         frustumCulled={false}
       >
         <planeGeometry args={[1, 1]} />
@@ -357,8 +478,9 @@ export const NotesRenderer = React.memo(function NotesRenderer({
       </instancedMesh>
 
       <instancedMesh
+        key={`marker-${markerCap}`}
         ref={layerMarkerMeshRef}
-        args={[undefined, undefined, MAX_VISIBLE_LAYER_MARKERS]}
+        args={[undefined, undefined, markerCap]}
         frustumCulled={false}
       >
         <planeGeometry args={[1, 1]} />
@@ -366,8 +488,9 @@ export const NotesRenderer = React.memo(function NotesRenderer({
       </instancedMesh>
 
       <instancedMesh
+        key={`flash-${flashCap}`}
         ref={activeFlashMeshRef}
-        args={[undefined, undefined, MAX_ACTIVE_FLASH]}
+        args={[undefined, undefined, flashCap]}
         frustumCulled={false}
       >
         <planeGeometry args={[1, 1]} />
@@ -375,8 +498,9 @@ export const NotesRenderer = React.memo(function NotesRenderer({
       </instancedMesh>
 
       <instancedMesh
+        key={`tail-${bgmTailCap}`}
         ref={bgmTailMeshRef}
-        args={[undefined, undefined, 200]}
+        args={[undefined, undefined, bgmTailCap]}
         frustumCulled={false}
       >
         <planeGeometry args={[1, 1]} />
@@ -385,7 +509,7 @@ export const NotesRenderer = React.memo(function NotesRenderer({
 
       {/* BGM WAV ID labels */}
       <BgmLabels
-        notes={notes}
+        sortedNotes={sortedNotes}
         lanes={lanes}
         beatScale={beatScale}
         scrollBeat={scrollBeat}
@@ -397,9 +521,14 @@ export const NotesRenderer = React.memo(function NotesRenderer({
   );
 });
 
+/** Maximum number of BGM ID labels rendered at once (one mesh each). */
+const MAX_BGM_LABELS = 200;
+/** BGM lanes narrower than this (adaptive BGM width) skip labels — the text would spill into neighbours. */
+const MIN_BGM_LABEL_LANE_WIDTH = 16;
+
 /** Sub-component that renders WAV ID text labels on BGM notes. */
 const BgmLabels = React.memo(function BgmLabels({
-  notes,
+  sortedNotes,
   lanes,
   beatScale,
   scrollBeat,
@@ -407,7 +536,8 @@ const BgmLabels = React.memo(function BgmLabels({
   offsetX,
   layerConfig,
 }: {
-  notes: EditableBMSNote[];
+  /** Notes sorted ascending by beat */
+  sortedNotes: EditableBMSNote[];
   lanes: LaneConfig[];
   beatScale: number;
   scrollBeat: number;
@@ -417,25 +547,27 @@ const BgmLabels = React.memo(function BgmLabels({
 }) {
   const bgmVisible = layerConfig?.bgm?.visible ?? true;
   const bgmLanes = useMemo(() => lanes.filter((l) => l.isBgm), [lanes]);
+  const bgmLaneMap = useMemo(() => new Map(bgmLanes.map((l) => [l.id, l])), [bgmLanes]);
 
   const labels = useMemo(() => {
     if (!bgmVisible || bgmLanes.length === 0) return [];
     // At low zoom labels become unreadable and only increase draw calls — hide them
     if (beatScale < 15) return [];
 
-    const MAX_LABELS = 50;
-    const buffer = viewportBeats * 0.5;
-    const minBeat = scrollBeat - buffer;
-    const maxBeat = scrollBeat + viewportBeats + buffer;
+    // Visible range plus a small margin; iterate bottom → top so visible labels fill the cap first
+    const margin = viewportBeats * 0.15;
+    const minBeat = scrollBeat - margin;
+    const maxBeat = scrollBeat + viewportBeats + margin;
+    const start = lowerBoundByBeat(sortedNotes, minBeat);
+    const end = upperBoundByBeat(sortedNotes, maxBeat);
 
     const result: { y: number; text: string; laneId: string }[] = [];
-    for (const note of notes) {
-      if (result.length >= MAX_LABELS) break;
+    for (let i = start; i < end && result.length < MAX_BGM_LABELS; i++) {
+      const note = sortedNotes[i];
       if (note.noteType !== 'bgm') continue;
-      if (note.beat < minBeat || note.beat > maxBeat) continue;
       const laneId = getBgmLaneId(note);
-      const lane = bgmLanes.find((l) => l.id === laneId);
-      if (!lane) continue;
+      const lane = bgmLaneMap.get(laneId);
+      if (!lane || lane.width < MIN_BGM_LABEL_LANE_WIDTH) continue;
       result.push({
         y: note.beat * beatScale,
         text: note.keysound,
@@ -443,7 +575,7 @@ const BgmLabels = React.memo(function BgmLabels({
       });
     }
     return result;
-  }, [notes, bgmLanes, bgmVisible, beatScale, scrollBeat, viewportBeats]);
+  }, [sortedNotes, bgmLanes, bgmLaneMap, bgmVisible, beatScale, scrollBeat, viewportBeats]);
 
   // Memoize byLane — TextLabels won't re-render unless labels changes
   const byLane = useMemo(() => {
@@ -580,9 +712,8 @@ export const RubberBandRect = React.memo(function RubberBandRect({
   );
 });
 
-/** Ghost note preview during drag move (InstancedMesh-based, 3 draw calls) */
-const MAX_GHOST_NOTES = 500;
-const MAX_GHOST_LN_BODIES = 500;
+/** Ghost note preview during drag move (InstancedMesh-based, 3 draw calls, sized to the selection) */
+const MIN_GHOST_CAPACITY = 256;
 
 export const DragGhostNotes = React.memo(function DragGhostNotes({
   notes,
@@ -610,6 +741,18 @@ export const DragGhostNotes = React.memo(function DragGhostNotes({
     return notes.filter((n) => selectedNotes.has(n.id));
   }, [notes, selectedNotes]);
 
+  const ghostLnCount = useMemo(
+    () => ghostNotes.reduce((acc, n) => acc + (n.endBeat !== undefined ? 1 : 0), 0),
+    [ghostNotes]
+  );
+  const ghostCapacity = instanceCapacity(ghostNotes.length, MIN_GHOST_CAPACITY);
+  const ghostLnCapacity = instanceCapacity(ghostLnCount, MIN_GHOST_CAPACITY);
+
+  const laneIndexMap = useMemo(
+    () => new Map(lanes.map((lane, i) => [lane.id, i] as const)),
+    [lanes]
+  );
+
   useFrame(() => {
     const ghostMesh = ghostMeshRef.current;
     const ghostLnBody = ghostLnBodyMeshRef.current;
@@ -617,14 +760,13 @@ export const DragGhostNotes = React.memo(function DragGhostNotes({
     if (!ghostMesh || !ghostLnBody || !ghostLnCap) return;
 
     let noteCount = 0;
-    let lnBodyCount = 0;
-    let lnCapCount = 0;
+    let lnCount = 0;
 
     for (const note of ghostNotes) {
-      if (noteCount >= MAX_GHOST_NOTES) break;
+      if (noteCount >= ghostCapacity) break;
 
       const noteLaneId = note.noteType === 'bgm' ? getBgmLaneId(note) : note.column;
-      const currentLaneIdx = lanes.findIndex((l) => l.id === noteLaneId);
+      const currentLaneIdx = noteLaneId !== undefined ? (laneIndexMap.get(noteLaneId) ?? -1) : -1;
       const targetLaneIdx = Math.max(0, Math.min(lanes.length - 1, currentLaneIdx + columnDelta));
       const targetLane = lanes[targetLaneIdx];
       if (!targetLane) continue;
@@ -641,58 +783,58 @@ export const DragGhostNotes = React.memo(function DragGhostNotes({
       noteCount++;
 
       // Long note body + end cap
-      if (note.endBeat !== undefined && lnBodyCount < MAX_GHOST_LN_BODIES) {
-        const endY = (note.endBeat! + beatDelta) * beatScale + noteHeight / 2;
+      if (note.endBeat !== undefined && lnCount < ghostLnCapacity) {
+        const endY = (note.endBeat + beatDelta) * beatScale + noteHeight / 2;
         const bodyY = (y + endY) / 2;
         const bodyHeight = Math.abs(endY - y);
 
         _dummy.position.set(x, bodyY, 2);
         _dummy.scale.set(laneWidth, bodyHeight, 1);
         _dummy.updateMatrix();
-        ghostLnBody.setMatrixAt(lnBodyCount, _dummy.matrix);
-        lnBodyCount++;
+        ghostLnBody.setMatrixAt(lnCount, _dummy.matrix);
 
-        if (lnCapCount < MAX_GHOST_LN_BODIES) {
-          _dummy.position.set(x, endY, 3);
-          _dummy.scale.set(laneWidth, noteHeight, 1);
-          _dummy.updateMatrix();
-          ghostLnCap.setMatrixAt(lnCapCount, _dummy.matrix);
-          lnCapCount++;
-        }
+        _dummy.position.set(x, endY, 3);
+        _dummy.scale.set(laneWidth, noteHeight, 1);
+        _dummy.updateMatrix();
+        ghostLnCap.setMatrixAt(lnCount, _dummy.matrix);
+        lnCount++;
       }
     }
 
     ghostMesh.count = noteCount;
     ghostMesh.instanceMatrix.needsUpdate = true;
 
-    ghostLnBody.count = lnBodyCount;
+    ghostLnBody.count = lnCount;
     ghostLnBody.instanceMatrix.needsUpdate = true;
 
-    ghostLnCap.count = lnCapCount;
+    ghostLnCap.count = lnCount;
     ghostLnCap.instanceMatrix.needsUpdate = true;
   });
 
   return (
     <group>
       <instancedMesh
+        key={`ghost-${ghostCapacity}`}
         ref={ghostMeshRef}
-        args={[undefined, undefined, MAX_GHOST_NOTES]}
+        args={[undefined, undefined, ghostCapacity]}
         frustumCulled={false}
       >
         <planeGeometry args={[1, 1]} />
         <meshBasicMaterial color="#00ffff" transparent opacity={0.4} />
       </instancedMesh>
       <instancedMesh
+        key={`ghost-body-${ghostLnCapacity}`}
         ref={ghostLnBodyMeshRef}
-        args={[undefined, undefined, MAX_GHOST_LN_BODIES]}
+        args={[undefined, undefined, ghostLnCapacity]}
         frustumCulled={false}
       >
         <planeGeometry args={[1, 1]} />
         <meshBasicMaterial color="#00ffff" transparent opacity={0.2} />
       </instancedMesh>
       <instancedMesh
+        key={`ghost-cap-${ghostLnCapacity}`}
         ref={ghostLnCapMeshRef}
-        args={[undefined, undefined, MAX_GHOST_LN_BODIES]}
+        args={[undefined, undefined, ghostLnCapacity]}
         frustumCulled={false}
       >
         <planeGeometry args={[1, 1]} />
