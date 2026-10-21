@@ -392,7 +392,8 @@ export function useBmsChart(options: UseBmsChartOptions): UseBmsChartReturn {
         }
         // Channel 08: #BPMxx reference
         else if (obj.channel === '08') {
-          const bpmValue = parseFloat(chart.headers.get('bpm' + obj.value) || '');
+          // #EXBPMxx is an alias of #BPMxx (#BPMxx wins when both exist)
+          const bpmValue = parseFloat(chart.headers.get('bpm' + obj.value) ?? chart.headers.get('exbpm' + obj.value) ?? '');
           if (!isNaN(bpmValue) && bpmValue > 0) {
             const beat = chart.measureToBeat(obj.measure, obj.fraction);
             bpmChanges.push({ beat, bpm: bpmValue });
