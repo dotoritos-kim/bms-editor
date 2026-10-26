@@ -103,28 +103,36 @@ export type UseBmsChartReturn = [UseBmsChartState, UseBmsChartControls];
  * Analyzes the columns used by notes and returns the appropriate key mode.
  *
  * Detection priority:
- * 1. Header extension commands (#6K, #4K)
+ * 1. Header extension commands (#KEYMODE, Qwilight #4K / #6K / #8K)
  * 2. DP (whether 2P columns are used)
  * 3. Keyboard style (only numeric columns, no SC/FZ)
  * 4. IIDX style (includes SC/FZ)
  *
- * 6K/4K detection (based on 7+1 structure):
- * - 6K: columns 1,2,3,5,6,7 used, column 4 and SC unused
- * - 4K: columns 1,2,6,7 or similar pattern, SC unused
+ * 4K/6K/8K (the U_E / Yuipack modes) are told apart only by their value-less
+ * extension commands, as Qwilight does: without one, the same channels are a
+ * 5K/7K chart.
  */
-export function detectKeyMode(notes: BMSNote[], headers?: { get: (key: string) => string | undefined }): KeyMode {
-  // Check header extension commands (#6K, #4K, #KEYMODE)
+export function detectKeyMode(
+  notes: BMSNote[],
+  headers?: { get: (key: string) => string | undefined; has?: (key: string) => boolean },
+): KeyMode {
+  // Check header extension commands (#4K, #6K, #8K, #KEYMODE)
   if (headers) {
+    // Qwilight counts #4K / #6K / #8K only without a value ("#6K 1" is not the
+    // command); get() is then undefined or empty, has() tells it from absent
+    const command = (key: string) => {
+      const value = headers.get(key);
+      return !value && (headers.has ? headers.has(key) : value !== undefined);
+    };
+    if (command('4k')) return '4K';
+    if (command('6k')) return '6K';
+    if (command('8k')) return '8K';
     const keymode = headers.get('keymode');
     if (keymode) {
       const km = keymode.trim().toUpperCase();
       const valid: KeyMode[] = ['4K','5K','6K','7K','8K','9K','10K','12K','14K','18K','24K','48K'];
       if (valid.includes(km as KeyMode)) return km as KeyMode;
     }
-    const has6K = headers.get('6k') || headers.get('6K');
-    const has4K = headers.get('4k') || headers.get('4K');
-    if (has6K) return '6K';
-    if (has4K) return '4K';
   }
   const usedColumns = new Set<string>();
 
@@ -203,16 +211,7 @@ export function detectKeyMode(notes: BMSNote[], headers?: { get: (key: string) =
 
   // IIDX SP style (uses SC/FZ)
   if (hasIIDXSpecialLanes) {
-    const numericKeys = ['1','2','3','4','5','6','7'].filter(c => usedColumns.has(c));
-
-    if (usedColumns.has('6') || usedColumns.has('7')) {
-      // Eripack-style 6K: SC+1,2,3,5,6,7+FZ (no column 4, 6 numeric keys)
-      if (!usedColumns.has('4') && numericKeys.length === 6) return '6K';
-      return '7K';
-    }
-
-    // Yuipack-style 4K: SC+1,2,4,5+FZ (no column 3, 4 numeric keys)
-    if (!usedColumns.has('3') && usedColumns.has('4') && usedColumns.has('5') && numericKeys.length === 4) return '4K';
+    if (usedColumns.has('6') || usedColumns.has('7')) return '7K';
 
     // Standard 5K: SC+1-5+FZ
     return '5K';
@@ -225,50 +224,13 @@ export function detectKeyMode(notes: BMSNote[], headers?: { get: (key: string) =
   // 24K SP (keyboard) - columns 1-24
   if (maxNumericColumn >= 12) return '24K';
 
-  // 9K: PMS style or keyboard 9 keys
-  if (maxNumericColumn >= 9 || usedColumns.has('9')) return '9K';
+  // 9K: PMS style, or keyboard 8-9 keys (lanes 1-9)
+  if (maxNumericColumn >= 8 || usedColumns.has('9')) return '9K';
 
-  // 8K: 8 keys keyboard style
-  if (maxNumericColumn >= 8) return '8K';
-
-  // ============================================
-  // 6K/4K detection based on 7+1 structure (no SC)
-  // 6K: columns 1,2,3,5,6,7 used (column 4 unused)
-  // 4K: columns 1,2,4,5 used (columns 3,6,7 unused)
-  // ============================================
-  if (maxNumericColumn >= 5) {
-    const hasColumn3 = usedColumns.has('3');
-    const hasColumn4 = usedColumns.has('4');
-    const hasColumn6 = usedColumns.has('6');
-    const hasColumn7 = usedColumns.has('7');
-    const usedKeyColumns = ['1', '2', '3', '4', '5', '6', '7'].filter(col => usedColumns.has(col));
-    const usedKeyCount = usedKeyColumns.length;
-
-    // 4K pattern: columns 1,2,4,5 used, 3,6,7 unused
-    if (!hasColumn3 && !hasColumn6 && !hasColumn7 && usedKeyCount === 4) {
-      return '4K';
-    }
-
-    // 6K pattern: columns 1,2,3,5,6,7 used, column 4 unused
-    if (!hasColumn4 && usedKeyCount === 6) {
-      return '6K';
-    }
-
-    // 7K: 7 keys keyboard style
-    if (maxNumericColumn >= 7) return '7K';
-
-    // 6K: 6 keys keyboard style
-    if (maxNumericColumn >= 6) return '6K';
-
-    // 5K: 5 keys keyboard style
-    return '5K';
-  }
-
-  // 5K: 5 keys keyboard style
-  if (maxNumericColumn >= 5) return '5K';
-
-  // 4K: 4 keys keyboard style
-  return '4K';
+  // 4K/6K/8K need their extension command (handled above); without one the
+  // keys fit the 5K / 7K lanes
+  if (maxNumericColumn >= 6) return '7K';
+  return '5K';
 }
 
 /**

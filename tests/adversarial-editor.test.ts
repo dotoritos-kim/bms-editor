@@ -125,14 +125,14 @@ describe('Adversarial Editor Scenarios', () => {
         column: '3',
         keysound: '01',
       }));
-      // Only column 3 used, no SC, maxNumeric = 3 => falls through to 4K
-      expect(detectKeyMode(notes)).toBe('4K');
+      // Only column 3 used, no SC, maxNumeric = 3 => falls through to 5K
+      expect(detectKeyMode(notes)).toBe('5K');
     });
 
     it('should handle a single note', () => {
       const notes: BMSNote[] = [{ beat: 0, column: '1', keysound: '01' }];
-      // Only column 1 used => 4K
-      expect(detectKeyMode(notes)).toBe('4K');
+      // Only column 1 used => 5K
+      expect(detectKeyMode(notes)).toBe('5K');
     });
   });
 
@@ -148,7 +148,7 @@ describe('Adversarial Editor Scenarios', () => {
         notes.push({ beat: i * 0.125, column: '1', keysound: '01' });
         notes.push({ beat: i * 0.125, column: '2', keysound: '02' });
       }
-      expect(detectKeyMode(notes)).toBe('4K');
+      expect(detectKeyMode(notes)).toBe('5K');
     });
 
     it('should handle notes at the exact same beat and column (stacked)', () => {
@@ -157,7 +157,7 @@ describe('Adversarial Editor Scenarios', () => {
         { beat: 4, column: '1', keysound: '02' },
         { beat: 4, column: '1', keysound: '03' },
       ];
-      expect(detectKeyMode(notes)).toBe('4K');
+      expect(detectKeyMode(notes)).toBe('5K');
     });
   });
 
@@ -171,7 +171,7 @@ describe('Adversarial Editor Scenarios', () => {
         { beat: 4, endBeat: 4, column: '1', keysound: '01' },
       ];
       // detectKeyMode should still work
-      expect(detectKeyMode(notes)).toBe('4K');
+      expect(detectKeyMode(notes)).toBe('5K');
     });
 
     it('should handle long notes where endBeat < beat (reversed)', () => {
@@ -179,14 +179,14 @@ describe('Adversarial Editor Scenarios', () => {
         { beat: 8, endBeat: 4, column: '1', keysound: '01' },
       ];
       // Should not crash, still detects key mode from column
-      expect(detectKeyMode(notes)).toBe('4K');
+      expect(detectKeyMode(notes)).toBe('5K');
     });
 
     it('should handle extremely long long notes (endBeat very far from beat)', () => {
       const notes: BMSNote[] = [
         { beat: 0, endBeat: 999999, column: '3', keysound: '01' },
       ];
-      expect(detectKeyMode(notes)).toBe('4K');
+      expect(detectKeyMode(notes)).toBe('5K');
     });
   });
 

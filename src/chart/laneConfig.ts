@@ -43,20 +43,21 @@ export function generateLaneConfig(keyMode: KeyMode, bgmChannelCount?: number): 
       colors: Record<string, string>;
       laneWidth: number;
       scratchWidth: number;
+      /** 'SC' is an ordinary key lane in this mode (Qwilight #8K), not a scratch. */
+      scAsKey?: boolean;
     }
   > = {
+    // Qwilight #4K: channels 11, 12, 14, 15 (other channels are not played)
     '4K': {
-      lanes: ['SC', '1', '2', '4', '5', 'FZ'],
+      lanes: ['1', '2', '4', '5'],
       colors: {
-        SC: '#ff3366',
         '1': '#ffffff',
         '2': '#3399ff',
-        '4': '#ffffff',
-        '5': '#3399ff',
-        FZ: '#888888',
+        '4': '#3399ff',
+        '5': '#ffffff',
       },
-      laneWidth: 35,
-      scratchWidth: 35,
+      laneWidth: 40,
+      scratchWidth: 0,
     },
     '5K': {
       lanes: ['SC', '1', '2', '3', '4', '5', 'FZ'],
@@ -72,20 +73,19 @@ export function generateLaneConfig(keyMode: KeyMode, bgmChannelCount?: number): 
       laneWidth: 31,
       scratchWidth: 35,
     },
+    // Qwilight #6K: channels 11, 12, 13, 15, 18, 19 (other channels are not played)
     '6K': {
-      lanes: ['SC', '1', '2', '3', '5', '6', '7', 'FZ'],
+      lanes: ['1', '2', '3', '5', '6', '7'],
       colors: {
-        SC: '#ff3366',
         '1': '#ffffff',
         '2': '#3399ff',
         '3': '#ffffff',
-        '5': '#3399ff',
-        '6': '#ffffff',
-        '7': '#3399ff',
-        FZ: '#888888',
+        '5': '#ffffff',
+        '6': '#3399ff',
+        '7': '#ffffff',
       },
-      laneWidth: 28,
-      scratchWidth: 31,
+      laneWidth: 32,
+      scratchWidth: 0,
     },
     '7K': {
       lanes: ['SC', '1', '2', '3', '4', '5', '6', '7', 'FZ'],
@@ -103,20 +103,22 @@ export function generateLaneConfig(keyMode: KeyMode, bgmChannelCount?: number): 
       laneWidth: 25,
       scratchWidth: 31,
     },
+    // Qwilight #8K: channels 16, 11-15, 18, 19, with 16 as the leftmost key (not a scratch)
     '8K': {
-      lanes: ['1', '2', '3', '4', '5', '6', '7', '8'],
+      lanes: ['SC', '1', '2', '3', '4', '5', '6', '7'],
       colors: {
-        '1': '#ff6b6b',
-        '2': '#ffd93d',
-        '3': '#6bcb77',
-        '4': '#4d96ff',
-        '5': '#4d96ff',
-        '6': '#6bcb77',
-        '7': '#ffd93d',
-        '8': '#ff6b6b',
+        SC: '#ffffff',
+        '1': '#3399ff',
+        '2': '#ffffff',
+        '3': '#3399ff',
+        '4': '#ffffff',
+        '5': '#3399ff',
+        '6': '#ffffff',
+        '7': '#3399ff',
       },
       laneWidth: 25,
-      scratchWidth: 0,
+      scratchWidth: 25,
+      scAsKey: true,
     },
     '9K': {
       lanes: ['1', '2', '3', '4', '5', '6', '7', '8', '9'],
@@ -213,7 +215,7 @@ export function generateLaneConfig(keyMode: KeyMode, bgmChannelCount?: number): 
   let x = 0;
 
   const lanes = config.lanes.map((id, index) => {
-    const isScratch = id === 'SC' || id === 'SC2';
+    const isScratch = (id === 'SC' && !config.scAsKey) || id === 'SC2';
     const width = isScratch ? config.scratchWidth : config.laneWidth;
     const lane: LaneConfig = {
       id,

@@ -55,9 +55,9 @@ export type KeyMode = '4K' | '5K' | '6K' | '7K' | '8K' | '9K' | '10K' | '12K' | 
 
 // Key mode display format (with/without scratch)
 export const KEY_MODE_DISPLAY: { [key in KeyMode]: string } = {
-  '4K': '4K+SC',
+  '4K': '4K',
   '5K': '5K+SC',
-  '6K': '6K+SC',
+  '6K': '6K',
   '7K': '7K+SC',
   '8K': '8K',
   '9K': '9K',

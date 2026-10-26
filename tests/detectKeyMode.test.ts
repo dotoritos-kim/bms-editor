@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { detectKeyMode } from '../src/chart/useBmsChart';
+import { BMSParser } from '@rhythm-archive/bms-core';
 import type { BMSNote } from '@rhythm-archive/bms-core';
 
 /** Helper to create minimal BMSNote objects for testing */
@@ -43,20 +44,41 @@ describe('detectKeyMode', () => {
 
   it('should detect 6K from header extension command', () => {
     const notes = makeNotes(['1', '2', '3']);
-    const headers = makeHeaders({ '6K': '1', '6k': '1' });
+    const headers = makeHeaders({ '6K': '', '6k': '' });
     expect(detectKeyMode(notes, headers)).toBe('6K');
   });
 
   it('should detect 4K from header extension command', () => {
     const notes = makeNotes(['1', '2']);
-    const headers = makeHeaders({ '4K': '1', '4k': '1' });
+    const headers = makeHeaders({ '4K': '', '4k': '' });
     expect(detectKeyMode(notes, headers)).toBe('4K');
   });
 
-  it('should prioritize 6K header over 4K header', () => {
+  it('should prefer #4K when both #4K and #6K are present (as Qwilight does)', () => {
     const notes = makeNotes(['1', '2']);
-    const headers = makeHeaders({ '6K': '1', '4K': '1', '6k': '1', '4k': '1' });
-    expect(detectKeyMode(notes, headers)).toBe('6K');
+    const headers = makeHeaders({ '6K': '', '4K': '', '6k': '', '4k': '' });
+    expect(detectKeyMode(notes, headers)).toBe('4K');
+  });
+
+  it.each(['4K', '6K', '8K'])('should detect value-less #%s parsed from a file', (cmd) => {
+    const chart = new BMSParser().compileString(`#PLAYER 1\n#${cmd}\n#00111:01\n#00112:01\n`);
+    expect(chart.headers.get(cmd)).toBeUndefined();
+    expect(detectKeyMode(makeNotes(['1', '2']), chart.headers)).toBe(cmd);
+  });
+
+  it('should ignore #6K with a value (Qwilight only counts the value-less command)', () => {
+    const chart = new BMSParser().compileString('#PLAYER 1\n#6K 1\n#00111:01\n#00118:01\n');
+    expect(detectKeyMode(makeNotes(['1', '6']), chart.headers)).toBe('7K');
+  });
+
+  it('should let #8K win over a #KEYMODE header', () => {
+    const chart = new BMSParser().compileString('#PLAYER 1\n#KEYMODE 7K\n#8K\n#00111:01\n');
+    expect(detectKeyMode(makeNotes(['1']), chart.headers)).toBe('8K');
+  });
+
+  it('should not treat 4K/6K lane patterns as 4K/6K without the extension command', () => {
+    expect(detectKeyMode(makeNotes(['1', '2', '4', '5']), makeHeaders({}))).toBe('5K');
+    expect(detectKeyMode(makeNotes(['1', '2', '3', '5', '6', '7']), makeHeaders({}))).toBe('7K');
   });
 
   // =============================================
@@ -79,15 +101,14 @@ describe('detectKeyMode', () => {
     expect(detectKeyMode(notes)).toBe('7K');
   });
 
-  it('should detect 6K (에리팩) for SC + 1,2,3,5,6,7 without col 4 (no header needed)', () => {
-    // SC+1,2,3,5,6,7+FZ with col 4 absent = 에리팩 (Eri pack) style 6K — detectable without header
+  it('should detect 7K for SC + 1,2,3,5,6,7 without the #6K command', () => {
     const notes = makeNotes(['SC', '1', '2', '3', '5', '6', '7']);
-    expect(detectKeyMode(notes)).toBe('6K');
+    expect(detectKeyMode(notes)).toBe('7K');
   });
 
   it('should detect 6K for SC + 6 key columns with #6K header', () => {
     const notes = makeNotes(['SC', '1', '2', '3', '5', '6', '7']);
-    const headers = makeHeaders({ '6K': '1', '6k': '1' });
+    const headers = makeHeaders({ '6K': '', '6k': '' });
     expect(detectKeyMode(notes, headers)).toBe('6K');
   });
 
@@ -97,10 +118,9 @@ describe('detectKeyMode', () => {
     expect(detectKeyMode(notes)).toBe('7K');
   });
 
-  it('should detect 4K (유이팩) for SC + 1,2,4,5 without col 3 (no header needed)', () => {
-    // SC+1,2,4,5+FZ with col 3 absent = 유이팩 (Yui pack) style 4K — detectable without header
+  it('should detect 5K for SC + 1,2,4,5 without the #4K command', () => {
     const notes = makeNotes(['SC', '1', '2', '4', '5']);
-    expect(detectKeyMode(notes)).toBe('4K');
+    expect(detectKeyMode(notes)).toBe('5K');
   });
 
   it('should detect 5K for SC + 1,2,3,4,5 (standard 5K, not 유이팩)', () => {
@@ -127,9 +147,9 @@ describe('detectKeyMode', () => {
   // Keyboard SP modes (no scratch)
   // =============================================
 
-  it('should detect 8K for 8 numeric columns', () => {
+  it('should detect 9K for 8 keyboard columns (8K needs the #8K command)', () => {
     const notes = makeNotes(['1', '2', '3', '4', '5', '6', '7', '8']);
-    expect(detectKeyMode(notes)).toBe('8K');
+    expect(detectKeyMode(notes)).toBe('9K');
   });
 
   it('should detect 9K for 9 numeric columns', () => {
@@ -196,14 +216,14 @@ describe('detectKeyMode', () => {
   // 7+1 structure-based 6K/4K detection (no SC)
   // =============================================
 
-  it('should detect 4K for columns 1,2,4,5 without SC (7+1 structure)', () => {
+  it('should detect 5K for columns 1,2,4,5 without SC or #4K', () => {
     const notes = makeNotes(['1', '2', '4', '5']);
-    expect(detectKeyMode(notes)).toBe('4K');
+    expect(detectKeyMode(notes)).toBe('5K');
   });
 
-  it('should detect 6K for columns 1,2,3,5,6,7 without column 4 or SC', () => {
+  it('should detect 7K for columns 1,2,3,5,6,7 without SC or #6K', () => {
     const notes = makeNotes(['1', '2', '3', '5', '6', '7']);
-    expect(detectKeyMode(notes)).toBe('6K');
+    expect(detectKeyMode(notes)).toBe('7K');
   });
 
   it('should detect 7K for all columns 1-7 without SC', () => {
@@ -220,9 +240,9 @@ describe('detectKeyMode', () => {
   // Minimal usage
   // =============================================
 
-  it('should detect 4K for minimal keyboard usage (columns 1-2)', () => {
+  it('should detect 5K for minimal keyboard usage (columns 1-2)', () => {
     const notes = makeNotes(['1', '2']);
-    expect(detectKeyMode(notes)).toBe('4K');
+    expect(detectKeyMode(notes)).toBe('5K');
   });
 
   it('should handle notes with only BGM column (no column string)', () => {

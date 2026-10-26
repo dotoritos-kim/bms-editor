@@ -12,15 +12,10 @@ describe('generateLaneConfig', () => {
   // Per-mode lane count and structure tests
   // =============================================
 
-  it('should generate 6 lanes for 4K (SC + 4 keys + FZ)', () => {
+  it('should generate 4 lanes for 4K (Qwilight #4K: 1, 2, 4, 5)', () => {
     const lanes = generateLaneConfig('4K');
-    expect(lanes).toHaveLength(6);
-    expect(lanes[0].id).toBe('SC');
-    expect(lanes[0].isScratch).toBe(true);
-    expect(lanes[5].id).toBe('FZ');
-    // Key lanes are 1, 2, 4, 5 (no column 3)
-    const keyIds = lanes.filter((l) => !l.isScratch && l.id !== 'FZ').map((l) => l.id);
-    expect(keyIds).toEqual(['1', '2', '4', '5']);
+    expect(lanes.map((l) => l.id)).toEqual(['1', '2', '4', '5']);
+    expect(lanes.every((l) => !l.isScratch)).toBe(true);
   });
 
   it('should generate 7 lanes for 5K (SC + 5 keys + FZ)', () => {
@@ -33,13 +28,10 @@ describe('generateLaneConfig', () => {
     expect(keyIds).toEqual(['1', '2', '3', '4', '5']);
   });
 
-  it('should generate 8 lanes for 6K (SC + 6 keys + FZ)', () => {
+  it('should generate 6 lanes for 6K (Qwilight #6K: 1, 2, 3, 5, 6, 7)', () => {
     const lanes = generateLaneConfig('6K');
-    expect(lanes).toHaveLength(8);
-    expect(lanes[0].id).toBe('SC');
-    expect(lanes[7].id).toBe('FZ');
-    const keyIds = lanes.filter((l) => !l.isScratch && l.id !== 'FZ').map((l) => l.id);
-    expect(keyIds).toEqual(['1', '2', '3', '5', '6', '7']);
+    expect(lanes.map((l) => l.id)).toEqual(['1', '2', '3', '5', '6', '7']);
+    expect(lanes.every((l) => !l.isScratch)).toBe(true);
   });
 
   it('should generate 9 lanes for 7K (SC + 7 keys + FZ)', () => {
@@ -52,12 +44,12 @@ describe('generateLaneConfig', () => {
     expect(keyIds).toEqual(['1', '2', '3', '4', '5', '6', '7']);
   });
 
-  it('should generate 8 lanes for 8K (no scratch)', () => {
+  it('should generate 8 lanes for 8K (Qwilight #8K: 16 as a key, then 1-7)', () => {
     const lanes = generateLaneConfig('8K');
-    expect(lanes).toHaveLength(8);
+    expect(lanes.map((l) => l.id)).toEqual(['SC', '1', '2', '3', '4', '5', '6', '7']);
+    // Channel 16 is the leftmost key in #8K, not a scratch
     expect(lanes.every((l) => !l.isScratch)).toBe(true);
-    const ids = lanes.map((l) => l.id);
-    expect(ids).toEqual(['1', '2', '3', '4', '5', '6', '7', '8']);
+    expect(new Set(lanes.map((l) => l.width)).size).toBe(1);
   });
 
   it('should generate 9 lanes for 9K (no scratch)', () => {
@@ -166,11 +158,11 @@ describe('generateLaneConfig', () => {
   // Scratch detection
   // =============================================
 
-  it('should mark only SC and SC2 as scratch lanes', () => {
+  it('should mark only SC and SC2 as scratch lanes (except the 8K key on channel 16)', () => {
     for (const mode of ALL_KEY_MODES) {
       const lanes = generateLaneConfig(mode);
       for (const lane of lanes) {
-        if (lane.id === 'SC' || lane.id === 'SC2') {
+        if ((lane.id === 'SC' && mode !== '8K') || lane.id === 'SC2') {
           expect(lane.isScratch).toBe(true);
         } else {
           expect(lane.isScratch).toBe(false);
