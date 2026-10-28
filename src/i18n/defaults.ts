@@ -27,7 +27,7 @@ export const defaultMessages = {
     play: 'Play',
     stop: 'Stop',
     tools: {
-      select: { label: 'Select', description: 'Click or drag to select notes. Shift-click to extend selection.' },
+      select: { label: 'Select', description: "Click or drag to select notes; drag a note to move it. Drag a note's top edge (a long note's end) to lengthen or shorten it. Shift-click to extend selection." },
       addNote: { label: 'Add', description: 'Place a new note at the click location.' },
       delete: { label: 'Delete', description: 'Delete the clicked note.' },
       move: { label: 'Move', description: 'Drag the selected notes or use arrow keys to move them.' },

@@ -7,7 +7,8 @@ import {
   maxNotesInBeatWindow,
   findClosestNoteByBeat,
   noteHitHalfHeight,
-  MIN_NOTE_HIT_HALF_PX,
+  shortNoteHandleRange,
+  NOTE_HIT_MARGIN_PX,
   findClosestLongNoteEnd,
   findLongNoteBodyAt,
 } from '../src/chart/editor/noteIndex';
@@ -133,20 +134,48 @@ describe('findClosestNoteByBeat', () => {
 });
 
 describe('noteHitHalfHeight', () => {
-  it('covers the drawn note plus a margin at normal zoom', () => {
-    expect(noteHitHalfHeight(4, 4)).toBe(4);
-    expect(noteHitHalfHeight(8, 1)).toBe(MIN_NOTE_HIT_HALF_PX);
-    expect(noteHitHalfHeight(20, 1)).toBe(12);
+  it('is twice the drawn note plus the pixel margin, scaling with the note thickness', () => {
+    // zoom 2.5: the 5px margin is 2 world units
+    expect(noteHitHalfHeight(1, 2.5)).toBe(3);
+    expect(noteHitHalfHeight(4, 2.5)).toBe(6);
+    expect(noteHitHalfHeight(8, 2.5)).toBe(10);
   });
 
-  it('never falls under MIN_NOTE_HIT_HALF_PX screen pixels when zoomed out', () => {
-    expect(noteHitHalfHeight(4, 0.5)).toBe(MIN_NOTE_HIT_HALF_PX * 2);
-    expect(noteHitHalfHeight(2, 0.25)).toBe(MIN_NOTE_HIT_HALF_PX * 4);
+  it('grows strictly with the note thickness at any zoom', () => {
+    for (const zoom of [0.25, 1, 2.5, 4]) {
+      let prev = 0;
+      for (let h = 1; h <= 8; h++) {
+        const half = noteHitHalfHeight(h, zoom);
+        expect(half).toBeGreaterThan(prev);
+        expect(half).toBeGreaterThan(h / 2); // always larger than the drawn note
+        prev = half;
+      }
+    }
+  });
+
+  it('keeps NOTE_HIT_MARGIN_PX screen pixels beyond the note when zoomed out', () => {
+    expect((noteHitHalfHeight(1, 0.25) - 0.5) * 0.25).toBeGreaterThanOrEqual(NOTE_HIT_MARGIN_PX);
   });
 
   it('treats a bad zoom as 1', () => {
-    expect(noteHitHalfHeight(4, 0)).toBe(MIN_NOTE_HIT_HALF_PX);
-    expect(noteHitHalfHeight(4, NaN)).toBe(MIN_NOTE_HIT_HALF_PX);
+    expect(noteHitHalfHeight(4, 0)).toBe(noteHitHalfHeight(4, 1));
+    expect(noteHitHalfHeight(4, NaN)).toBe(noteHitHalfHeight(4, 1));
+  });
+});
+
+describe('shortNoteHandleRange', () => {
+  it('covers the upper part of the note and the hit-box margin above it', () => {
+    const { above, below } = shortNoteHandleRange(4, 1);
+    expect(below).toBeCloseTo(1.4);
+    // top of the hit box is noteHitHalfHeight - noteHeight / 2 above the top edge
+    expect(above).toBeGreaterThan(noteHitHalfHeight(4, 1) - 2);
+  });
+
+  it('scales with the note thickness', () => {
+    const thin = shortNoteHandleRange(1, 2);
+    const thick = shortNoteHandleRange(8, 2);
+    expect(thick.above).toBeGreaterThan(thin.above);
+    expect(thick.below).toBeGreaterThan(thin.below);
   });
 });
 

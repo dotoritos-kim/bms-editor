@@ -106,17 +106,37 @@ export function findClosestNoteByBeat<T extends BeatSortable>(
   return best;
 }
 
-/** A note's hit box never gets thinner than this many screen pixels above and below its centre. */
-export const MIN_NOTE_HIT_HALF_PX = 7;
+/**
+ * Hit-box margin, in screen pixels, added on each side of a note on top of its
+ * scaled height — keeps thin notes and zoomed-out (wide key mode) charts grabbable.
+ */
+export const NOTE_HIT_MARGIN_PX = 5;
+
+function safeZoom(zoom: number): number {
+  return zoom > 0 && Number.isFinite(zoom) ? zoom : 1;
+}
 
 /**
- * Half-height, in world units, of a note's hit box: the drawn note plus a small
- * margin, and never under MIN_NOTE_HIT_HALF_PX screen pixels at the camera's
- * `zoom` (wide key modes zoom out, which would otherwise shrink the target).
+ * Half-height, in world units, of a note's hit box (centred on the drawn
+ * note): twice the drawn note plus NOTE_HIT_MARGIN_PX screen pixels on each
+ * side at the camera's `zoom`, so it grows and shrinks with the note
+ * thickness setting.
  */
 export function noteHitHalfHeight(noteHeight: number, zoom: number): number {
-  const z = zoom > 0 && Number.isFinite(zoom) ? zoom : 1;
-  return Math.max(noteHeight / 2 + 2, MIN_NOTE_HIT_HALF_PX / z);
+  return noteHeight + NOTE_HIT_MARGIN_PX / safeZoom(zoom);
+}
+
+/**
+ * World-unit extent of a short note's stretch handle around its top edge:
+ * `above` reaches to the top of the hit box (plus a pixel), `below` covers the
+ * upper 35% of the drawn note. Both scale with the note thickness.
+ */
+export function shortNoteHandleRange(noteHeight: number, zoom: number): { above: number; below: number } {
+  const z = safeZoom(zoom);
+  return {
+    above: noteHitHalfHeight(noteHeight, zoom) - noteHeight / 2 + 1 / z,
+    below: noteHeight * 0.35,
+  };
 }
 
 /**

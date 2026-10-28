@@ -47,7 +47,7 @@ import { LanesRenderer, MeasureLinesRenderer, BpmMarkersRenderer, StopMarkersRen
 import { NotesRenderer, HoverPreview, RubberBandRect, DragGhostNotes, NotePassEffect, EditorJudgmentLine } from './editor/noteRenderers';
 import {
   sortNotesByBeat, lowerBoundByBeat, upperBoundByBeat, findClosestNoteByBeat,
-  noteHitHalfHeight, findClosestLongNoteEnd, findLongNoteBodyAt,
+  noteHitHalfHeight, shortNoteHandleRange, findClosestLongNoteEnd, findLongNoteBodyAt,
 } from './editor/noteIndex';
 
 /** Pointer travel (screen px) below which a press on a note is a click, not a drag. */
@@ -58,10 +58,14 @@ function canBeLongNote(note: EditableBMSNote): boolean {
   return (note.noteType === undefined || note.noteType === 'playable') && note.column !== undefined;
 }
 
-/** Translucent head / body / end preview of a long note being created or resized. */
+/** Translucent head / body / end preview of a long note being created or resized (head only once shrunk to a short note). */
 function LongNotePreview({ x, width, startY, endY, noteHeight, color }: {
   x: number; width: number; startY: number; endY: number; noteHeight: number; color: string;
 }) {
+  if (endY <= startY) {
+    // Shrunk back to a short note: only the head remains
+    return <mesh position={[x, startY, 3]}><planeGeometry args={[width, noteHeight]} /><meshBasicMaterial color={color} transparent opacity={0.6} /></mesh>;
+  }
   return (
     <group>
       <mesh position={[x, startY, 3]}><planeGeometry args={[width, noteHeight]} /><meshBasicMaterial color={color} transparent opacity={0.6} /></mesh>
@@ -478,38 +482,84 @@ function EditorCanvas({
   );
 
   /**
-   * Pointer down on the end cap of a long note — or on any note when
-   * `allowShortNote` (Alt-drag / long-note tool) — starts dragging its end.
-   * A short note dragged this way becomes a long note.
+   * Short playable note whose top edge — its stretch handle — is under the
+   * pointer: the upper part of the note plus the hit-box margin above it.
+   */
+  const findShortNoteTopAt = useCallback(
+    (worldX: number, worldY: number): EditableBMSNote | null => {
+      const { column } = worldToLaneRawBeat(worldX, worldY);
+      if (!column || isBgmLaneId(column)) return null;
+      const { above, below } = shortNoteHandleRange(noteHeight, (camera as THREE.OrthographicCamera).zoom || 1);
+      // A note's top edge is at beat * beatScale + noteHeight
+      const end = upperBoundByBeat(sortedNotes, (worldY - noteHeight + below) / beatScale);
+      let best: EditableBMSNote | null = null;
+      let bestDist = Infinity;
+      for (let i = lowerBoundByBeat(sortedNotes, (worldY - noteHeight - above) / beatScale); i < end; i++) {
+        const note = sortedNotes[i];
+        if (note.endBeat !== undefined || note.column !== column || !canBeLongNote(note)) continue;
+        if (!isLayerInteractable((note.noteType || 'playable') as LayerKey, layerConfig)) continue;
+        const dist = Math.abs(worldY - (note.beat * beatScale + noteHeight));
+        if (dist < bestDist) { best = note; bestDist = dist; }
+      }
+      return best;
+    },
+    [worldToLaneRawBeat, camera, noteHeight, sortedNotes, beatScale, layerConfig]
+  );
+
+  /**
+   * What a press at this point grabs: a long note's end cap or a short note's
+   * top edge (`resize` — drag to lengthen / shorten), otherwise a note to move.
+   */
+  const pressTargetAt = useCallback(
+    (worldX: number, worldY: number): { note: EditableBMSNote; resize: boolean } | null => {
+      const head = findNoteAtPosition(worldX, worldY);
+      const { centerBeat } = hitTarget(worldX, worldY);
+      const headDist = head ? Math.abs(head.beat - centerBeat) : Infinity;
+      // Prefer the head when the pointer is closer to it (short long notes)
+      const end = findLongNoteEndAtPosition(worldX, worldY);
+      if (end && end.dist <= headDist) return { note: end.note, resize: true };
+      const top = findShortNoteTopAt(worldX, worldY);
+      // Another note drawn right under the pointer wins over a neighbour's handle
+      const insideOtherHead = head !== null && top !== null && head.id !== top.id && headDist * beatScale <= noteHeight / 2;
+      if (top && !insideOtherHead) return { note: top, resize: true };
+      return head ? { note: head, resize: false } : null;
+    },
+    [findNoteAtPosition, hitTarget, findLongNoteEndAtPosition, findShortNoteTopAt, beatScale, noteHeight]
+  );
+
+  /**
+   * Pointer down on a resize handle (long-note end cap, short-note top edge)
+   * — or on any note when `anywhereOnNote` (Alt-drag / long-note tool) —
+   * starts dragging that note's end. A short note dragged up becomes a long
+   * note; a long note dragged back to its head becomes a short note.
    */
   const tryStartLongNoteResize = useCallback(
-    (worldX: number, worldY: number, clientX: number, clientY: number, allowShortNote: boolean): boolean => {
-      const end = findLongNoteEndAtPosition(worldX, worldY);
-      const head = findNoteAtPosition(worldX, worldY);
-      let target: EditableBMSNote | null = null;
-      if (end) {
-        // Prefer the head when the pointer is closer to it (short long notes)
-        const { centerBeat } = hitTarget(worldX, worldY);
-        const headDist = head ? Math.abs(head.beat - centerBeat) : Infinity;
-        if (end.dist <= headDist) target = end.note;
-      }
-      if (!target && allowShortNote && head && canBeLongNote(head)) target = head;
+    (worldX: number, worldY: number, clientX: number, clientY: number, anywhereOnNote: boolean): boolean => {
+      const press = pressTargetAt(worldX, worldY);
+      let target = press?.resize ? press.note : null;
+      if (!target && anywhereOnNote && press && canBeLongNote(press.note)) target = press.note;
       if (!target) return false;
       setResizing({ noteId: target.id, startEndBeat: target.endBeat ?? target.beat });
       setDragStart({ x: worldX, y: worldY });
       pressClientRef.current = { x: clientX, y: clientY };
-      onNoteSelect([target.id]);
+      // Keep an existing multi-selection when the press lands on one of its notes
+      if (!selectedNotes.has(target.id)) onNoteSelect([target.id]);
       return true;
     },
-    [findLongNoteEndAtPosition, findNoteAtPosition, hitTarget, onNoteSelect]
+    [pressTargetAt, selectedNotes, onNoteSelect]
   );
 
-  /** Grid-snapped end beat for a long-note resize with the end cap under the pointer. */
+  /**
+   * Grid-snapped end beat for a resize with the end cap under the pointer, or
+   * `undefined` when dragged back to the head (the note becomes a short note).
+   */
   const resizeEndBeat = useCallback(
-    (worldY: number, note: EditableBMSNote): number => {
+    (worldY: number, note: EditableBMSNote): number | undefined => {
       const rawEnd = (worldY - noteHeight / 2) / beatScale;
       const end = (snapEnabled && !shiftHeldRef.current) ? snapBeatToGrid(rawEnd, gridSnap) : rawEnd;
-      return Math.max(end, note.beat + Math.max(4 / gridSnap, 0.25));
+      const minLength = Math.max(4 / gridSnap, 0.25);
+      if (end < note.beat + minLength / 2) return undefined;
+      return Math.max(end, note.beat + minLength);
     },
     [noteHeight, beatScale, snapEnabled, gridSnap]
   );
@@ -550,13 +600,14 @@ function EditorCanvas({
       else setHoverPosition(null);
 
       const idle = !isDragging && !rubberBand && !resizing && !lnDragCreate;
-      if ((onNoteHover || (idle && activeTool === 'select')) && pointerActuallyMoved && !scrollSuppressRef.current) {
+      const showsPressCursor = idle && (activeTool === 'select' || activeTool === 'move');
+      if ((onNoteHover || showsPressCursor) && pointerActuallyMoved && !scrollSuppressRef.current) {
         const hoveredNote = findNoteAtPosition(world.x, world.y);
         onNoteHover?.(hoveredNote?.keysound && hoveredNote.keysound !== '00' ? hoveredNote.keysound : null);
-        // Select tool: show what a press would do (resize an LN end / move a note)
-        if (idle && activeTool === 'select') {
-          const end = findLongNoteEndAtPosition(world.x, world.y);
-          gl.domElement.style.cursor = end ? 'ns-resize' : hoveredNote ? 'grab' : 'default';
+        // Show what a press would do: stretch / shrink (note end) or move
+        if (showsPressCursor) {
+          const press = pressTargetAt(world.x, world.y);
+          gl.domElement.style.cursor = press?.resize ? 'ns-resize' : press ? 'grab' : (activeTool === 'move' ? 'grab' : 'default');
         }
       }
 
@@ -568,7 +619,7 @@ function EditorCanvas({
 
       if (resizing && dragStart) {
         const note = notes.find((n) => n.id === resizing.noteId);
-        if (note) setDragDelta({ beatDelta: resizeEndBeat(world.y, note) - resizing.startEndBeat, columnDelta: 0 });
+        if (note) setDragDelta({ beatDelta: (resizeEndBeat(world.y, note) ?? note.beat) - resizing.startEndBeat, columnDelta: 0 });
       }
 
       if (isDragging && dragStart && (activeTool === 'move' || activeTool === 'select')) {
@@ -608,7 +659,7 @@ function EditorCanvas({
         setSnapGuideBeat(null);
       }
     },
-    [screenToWorld, worldToLaneBeat, isDragging, dragStart, rubberBand, activeTool, lanes, offsetX, resizing, notes, sortedNotes, beatScale, gridSnap, totalHeight, onNoteHover, findNoteAtPosition, findLongNoteEndAtPosition, resizeEndBeat, gl.domElement, lnDragCreate]
+    [screenToWorld, worldToLaneBeat, isDragging, dragStart, rubberBand, activeTool, lanes, offsetX, resizing, notes, sortedNotes, beatScale, gridSnap, totalHeight, onNoteHover, findNoteAtPosition, pressTargetAt, resizeEndBeat, gl.domElement, lnDragCreate]
   );
 
   const handlePointerDown = useCallback(
@@ -634,8 +685,10 @@ function EditorCanvas({
 
       switch (activeTool) {
         case 'select': {
-          // LN end cap → resize; Alt+drag on a short note → stretch it into a long note
-          if (tryStartLongNoteResize(world.x, world.y, clientX, clientY, e.nativeEvent.altKey)) break;
+          // Note end (LN end cap / short-note top edge) → lengthen / shorten;
+          // Alt+drag anywhere on a short note stretches it too. Ctrl+click only toggles selection.
+          const additive = e.nativeEvent.ctrlKey || e.nativeEvent.metaKey;
+          if (!additive && tryStartLongNoteResize(world.x, world.y, clientX, clientY, e.nativeEvent.altKey)) break;
           const clickedNote = findNoteAtPosition(world.x, world.y);
           if (clickedNote) {
             if (e.nativeEvent.ctrlKey || e.nativeEvent.metaKey) {
@@ -707,6 +760,8 @@ function EditorCanvas({
           break;
         }
         case 'move': {
+          // Note end (LN end cap / short-note top edge) → stretch or shrink
+          if (tryStartLongNoteResize(world.x, world.y, clientX, clientY, e.nativeEvent.altKey)) break;
           const clickedNote = findNoteAtPosition(world.x, world.y);
           if (clickedNote) {
             if (selectedNotes.has(clickedNote.id)) {
@@ -804,8 +859,12 @@ function EditorCanvas({
           const note = notes.find((n) => n.id === resizing.noteId);
           if (note) {
             const newEndBeat = resizeEndBeat(world.y, note);
-            // A short note always changes (it becomes a long note); a long note only if its end moved
-            if (note.endBeat === undefined || Math.abs(newEndBeat - resizing.startEndBeat) > 0.001) {
+            if (newEndBeat === undefined) {
+              // Dragged back to its head: the long note becomes a short note
+              if (note.endBeat !== undefined) {
+                onNoteUpdate(resizing.noteId, { endBeat: undefined, endTick: undefined, endMeasure: undefined, endFraction: undefined });
+              }
+            } else if (note.endBeat === undefined || Math.abs(newEndBeat - note.endBeat) > 0.001) {
               onNoteUpdate(resizing.noteId, { endBeat: newEndBeat });
             }
           }
