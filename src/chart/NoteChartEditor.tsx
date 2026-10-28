@@ -42,10 +42,34 @@ function defaultBeatScaleForKeyMode(keyMode: string): number {
   if (keyMode === '48K') return 4;
   return 20;
 }
-import { NoteHeightContext, snapBeatToGrid, getBgmLaneId, isBgmLaneId, bgmLaneIdToChannel } from './editor/editorUtils';
+import { NoteHeightContext, useNoteHeight, snapBeatToGrid, getBgmLaneId, isBgmLaneId, bgmLaneIdToChannel } from './editor/editorUtils';
 import { LanesRenderer, MeasureLinesRenderer, BpmMarkersRenderer, StopMarkersRenderer, CurrentMeasureHighlight } from './editor/gridRenderers';
 import { NotesRenderer, HoverPreview, RubberBandRect, DragGhostNotes, NotePassEffect, EditorJudgmentLine } from './editor/noteRenderers';
-import { sortNotesByBeat, lowerBoundByBeat, upperBoundByBeat, findClosestNoteByBeat } from './editor/noteIndex';
+import {
+  sortNotesByBeat, lowerBoundByBeat, upperBoundByBeat, findClosestNoteByBeat,
+  noteHitHalfHeight, findClosestLongNoteEnd, findLongNoteBodyAt,
+} from './editor/noteIndex';
+
+/** Pointer travel (screen px) below which a press on a note is a click, not a drag. */
+const DRAG_THRESHOLD_PX = 4;
+
+/** Only playable lane notes can become long notes. */
+function canBeLongNote(note: EditableBMSNote): boolean {
+  return (note.noteType === undefined || note.noteType === 'playable') && note.column !== undefined;
+}
+
+/** Translucent head / body / end preview of a long note being created or resized. */
+function LongNotePreview({ x, width, startY, endY, noteHeight, color }: {
+  x: number; width: number; startY: number; endY: number; noteHeight: number; color: string;
+}) {
+  return (
+    <group>
+      <mesh position={[x, startY, 3]}><planeGeometry args={[width, noteHeight]} /><meshBasicMaterial color={color} transparent opacity={0.6} /></mesh>
+      <mesh position={[x, (startY + endY) / 2, 2]}><planeGeometry args={[width, Math.abs(endY - startY)]} /><meshBasicMaterial color={color} transparent opacity={0.25} /></mesh>
+      <mesh position={[x, endY, 3]}><planeGeometry args={[width, noteHeight]} /><meshBasicMaterial color={color} transparent opacity={0.6} /></mesh>
+    </group>
+  );
+}
 
 // Re-exports for backwards compatibility
 export { EditorToolbar } from './editor/EditorToolbar';
@@ -117,6 +141,7 @@ function EditorCanvas({
   scrollBeatImperativeRef?: React.RefObject<number>;
 }) {
   const { camera, gl, size } = useThree();
+  const noteHeight = useNoteHeight();
   const [scrollBeat, setScrollBeat] = useState(-4); // Start slightly below beat 0 so bottom edge isn't flush with window
   const [beatScale, setBeatScale] = useState(() =>
     initialBeatScale === 20 ? defaultBeatScaleForKeyMode(keyMode) : initialBeatScale
@@ -132,6 +157,10 @@ function EditorCanvas({
   // Snap guideline: nearest note beat when hovering/dragging
   const [snapGuideBeat, setSnapGuideBeat] = useState<number | null>(null);
   const pointerUpProcessedRef = useRef(false);
+  // Notes being dragged, fixed at pointer-down (the selection prop may lag a render behind)
+  const dragNoteIdsRef = useRef<string[]>([]);
+  // Screen position of the pointer-down that started a drag / resize
+  const pressClientRef = useRef({ x: 0, y: 0 });
   const pendingBeatScaleRef = useRef<number | null>(null);
   // Suppress hover preview during scroll (wheel)
   const scrollSuppressRef = useRef(false);
@@ -400,43 +429,93 @@ function EditorCanvas({
     [lanes, offsetX, beatScale]
   );
 
-  // Hit detection
+  // Hit detection. Notes are drawn centred at beat * beatScale + noteHeight / 2,
+  // so hit-tests compare that centre against the pointer with a tolerance of
+  // the note's half-height (never under a few screen pixels at the current zoom).
+  const hitTarget = useCallback(
+    (worldX: number, worldY: number) => {
+      const { column, rawBeat } = worldToLaneRawBeat(worldX, worldY);
+      const zoom = (camera as THREE.OrthographicCamera).zoom || 1;
+      return {
+        column,
+        centerBeat: rawBeat - noteHeight / 2 / beatScale,
+        tolerance: noteHitHalfHeight(noteHeight, zoom) / beatScale,
+      };
+    },
+    [worldToLaneRawBeat, camera, noteHeight, beatScale]
+  );
+
   const findNoteAtPosition = useCallback(
     (worldX: number, worldY: number): EditableBMSNote | null => {
-      const { column, rawBeat } = worldToLaneRawBeat(worldX, worldY);
+      const { column, centerBeat, tolerance } = hitTarget(worldX, worldY);
       if (!column) return null;
-      const clickTolerance = 2 / beatScale;
       const bgmLane = isBgmLaneId(column);
-      // Binary search: only notes whose head lies within the click tolerance are tested
-      return findClosestNoteByBeat(sortedNotes, rawBeat, clickTolerance, (note) => {
+      const matches = (note: EditableBMSNote) => {
         // Skip notes on locked/hidden layers
         const noteLayer = (note.noteType || 'playable') as LayerKey;
         if (!isLayerInteractable(noteLayer, layerConfig)) return false;
         if (bgmLane) return note.noteType === 'bgm' && getBgmLaneId(note) === column;
         return note.column === column;
-      });
+      };
+      // Binary search: only notes whose head lies within the click tolerance are tested
+      const head = findClosestNoteByBeat(sortedNotes, centerBeat, tolerance, matches);
+      if (head || bgmLane) return head;
+      // A long note can also be grabbed by its body
+      return findLongNoteBodyAt(longNotes, centerBeat, matches);
     },
-    [sortedNotes, worldToLaneRawBeat, beatScale, layerConfig]
+    [hitTarget, sortedNotes, longNotes, layerConfig]
   );
 
+  /** Long note whose end cap is under the pointer, with its distance in beats. */
   const findLongNoteEndAtPosition = useCallback(
-    (worldX: number, worldY: number): EditableBMSNote | null => {
-      const { column } = worldToLaneBeat(worldX, worldY);
-      if (!column) return null;
-      const rawBeat = worldY / beatScale;
-      const tolerance = 3 / beatScale;
-      return (
-        longNotes.find(
-          (note) => note.column === column && note.endBeat !== undefined && Math.abs(note.endBeat - rawBeat) < tolerance
-        ) || null
-      );
+    (worldX: number, worldY: number): { note: EditableBMSNote; dist: number } | null => {
+      const { column, centerBeat, tolerance } = hitTarget(worldX, worldY);
+      if (!column || isBgmLaneId(column)) return null;
+      return findClosestLongNoteEnd(longNotes, centerBeat, tolerance, (note) =>
+        note.column === column && isLayerInteractable((note.noteType || 'playable') as LayerKey, layerConfig));
     },
-    [longNotes, worldToLaneBeat, beatScale]
+    [hitTarget, longNotes, layerConfig]
+  );
+
+  /**
+   * Pointer down on the end cap of a long note — or on any note when
+   * `allowShortNote` (Alt-drag / long-note tool) — starts dragging its end.
+   * A short note dragged this way becomes a long note.
+   */
+  const tryStartLongNoteResize = useCallback(
+    (worldX: number, worldY: number, clientX: number, clientY: number, allowShortNote: boolean): boolean => {
+      const end = findLongNoteEndAtPosition(worldX, worldY);
+      const head = findNoteAtPosition(worldX, worldY);
+      let target: EditableBMSNote | null = null;
+      if (end) {
+        // Prefer the head when the pointer is closer to it (short long notes)
+        const { centerBeat } = hitTarget(worldX, worldY);
+        const headDist = head ? Math.abs(head.beat - centerBeat) : Infinity;
+        if (end.dist <= headDist) target = end.note;
+      }
+      if (!target && allowShortNote && head && canBeLongNote(head)) target = head;
+      if (!target) return false;
+      setResizing({ noteId: target.id, startEndBeat: target.endBeat ?? target.beat });
+      setDragStart({ x: worldX, y: worldY });
+      pressClientRef.current = { x: clientX, y: clientY };
+      onNoteSelect([target.id]);
+      return true;
+    },
+    [findLongNoteEndAtPosition, findNoteAtPosition, hitTarget, onNoteSelect]
+  );
+
+  /** Grid-snapped end beat for a long-note resize with the end cap under the pointer. */
+  const resizeEndBeat = useCallback(
+    (worldY: number, note: EditableBMSNote): number => {
+      const rawEnd = (worldY - noteHeight / 2) / beatScale;
+      const end = (snapEnabled && !shiftHeldRef.current) ? snapBeatToGrid(rawEnd, gridSnap) : rawEnd;
+      return Math.max(end, note.beat + Math.max(4 / gridSnap, 0.25));
+    },
+    [noteHeight, beatScale, snapEnabled, gridSnap]
   );
 
   const findNotesInRect = useCallback(
     (x1: number, y1: number, x2: number, y2: number): string[] => {
-      const noteHeight = DEFAULT_NOTE_HEIGHT;
       const minX = Math.min(x1, x2);
       const maxX = Math.max(x1, x2);
       const minBeat = (Math.min(y1, y2) - noteHeight / 2) / beatScale;
@@ -453,7 +532,7 @@ function EditorCanvas({
       }
       return ids;
     },
-    [sortedNotes, laneMap, offsetX, beatScale]
+    [sortedNotes, laneMap, offsetX, beatScale, noteHeight]
   );
 
   // Event handlers
@@ -470,9 +549,15 @@ function EditorCanvas({
       if (column && beat >= 0) setHoverPosition({ beat, column });
       else setHoverPosition(null);
 
-      if (onNoteHover && pointerActuallyMoved && !scrollSuppressRef.current) {
+      const idle = !isDragging && !rubberBand && !resizing && !lnDragCreate;
+      if ((onNoteHover || (idle && activeTool === 'select')) && pointerActuallyMoved && !scrollSuppressRef.current) {
         const hoveredNote = findNoteAtPosition(world.x, world.y);
-        onNoteHover(hoveredNote?.keysound && hoveredNote.keysound !== '00' ? hoveredNote.keysound : null);
+        onNoteHover?.(hoveredNote?.keysound && hoveredNote.keysound !== '00' ? hoveredNote.keysound : null);
+        // Select tool: show what a press would do (resize an LN end / move a note)
+        if (idle && activeTool === 'select') {
+          const end = findLongNoteEndAtPosition(world.x, world.y);
+          gl.domElement.style.cursor = end ? 'ns-resize' : hoveredNote ? 'grab' : 'default';
+        }
       }
 
       if (rubberBand) {
@@ -482,13 +567,8 @@ function EditorCanvas({
       }
 
       if (resizing && dragStart) {
-        const rawBeat = world.y / beatScale;
-        const snappedBeat = snapBeatToGrid(rawBeat, gridSnap);
         const note = notes.find((n) => n.id === resizing.noteId);
-        if (note) {
-          const minEnd = note.beat + Math.max(4 / gridSnap, 0.25);
-          setDragDelta({ beatDelta: Math.max(snappedBeat, minEnd) - resizing.startEndBeat, columnDelta: 0 });
-        }
+        if (note) setDragDelta({ beatDelta: resizeEndBeat(world.y, note) - resizing.startEndBeat, columnDelta: 0 });
       }
 
       if (isDragging && dragStart && (activeTool === 'move' || activeTool === 'select')) {
@@ -528,7 +608,7 @@ function EditorCanvas({
         setSnapGuideBeat(null);
       }
     },
-    [screenToWorld, worldToLaneBeat, isDragging, dragStart, rubberBand, activeTool, lanes, offsetX, resizing, notes, sortedNotes, beatScale, gridSnap, totalHeight, onNoteHover, findNoteAtPosition, lnDragCreate]
+    [screenToWorld, worldToLaneBeat, isDragging, dragStart, rubberBand, activeTool, lanes, offsetX, resizing, notes, sortedNotes, beatScale, gridSnap, totalHeight, onNoteHover, findNoteAtPosition, findLongNoteEndAtPosition, resizeEndBeat, gl.domElement, lnDragCreate]
   );
 
   const handlePointerDown = useCallback(
@@ -538,25 +618,35 @@ function EditorCanvas({
       const world = screenToWorld(e.nativeEvent.clientX, e.nativeEvent.clientY);
       const { column, beat } = worldToLaneBeat(world.x, world.y);
       if (!column || beat < 0 || beat > totalBeats) return;
-      if (e.nativeEvent.button === 2) return;
+      const { clientX, clientY } = e.nativeEvent;
+      if (e.nativeEvent.button === 2) {
+        // Right-click on an unselected note selects it so the context menu acts on it
+        const clickedNote = findNoteAtPosition(world.x, world.y);
+        if (clickedNote && !selectedNotes.has(clickedNote.id)) onNoteSelect([clickedNote.id]);
+        return;
+      }
+      const startNoteDrag = (ids: string[]) => {
+        dragNoteIdsRef.current = ids;
+        pressClientRef.current = { x: clientX, y: clientY };
+        setIsDragging(true);
+        setDragStart({ x: world.x, y: world.y });
+      };
 
       switch (activeTool) {
         case 'select': {
-          const longNoteEnd = findLongNoteEndAtPosition(world.x, world.y);
-          if (longNoteEnd && longNoteEnd.endBeat !== undefined) {
-            setResizing({ noteId: longNoteEnd.id, startEndBeat: longNoteEnd.endBeat });
-            setDragStart({ x: world.x, y: world.y });
-            onNoteSelect([longNoteEnd.id]);
-            break;
-          }
+          // LN end cap → resize; Alt+drag on a short note → stretch it into a long note
+          if (tryStartLongNoteResize(world.x, world.y, clientX, clientY, e.nativeEvent.altKey)) break;
           const clickedNote = findNoteAtPosition(world.x, world.y);
           if (clickedNote) {
-            // DAW-style: if clicking an already-selected note, start drag-move
-            if (selectedNotes.has(clickedNote.id) && !e.nativeEvent.ctrlKey && !e.nativeEvent.metaKey) {
-              setIsDragging(true);
-              setDragStart({ x: world.x, y: world.y });
+            if (e.nativeEvent.ctrlKey || e.nativeEvent.metaKey) {
+              onNoteSelect([clickedNote.id], true);
+            } else if (selectedNotes.has(clickedNote.id)) {
+              // DAW-style: dragging a selected note moves the whole selection
+              startNoteDrag(Array.from(selectedNotes));
             } else {
-              onNoteSelect([clickedNote.id], e.nativeEvent.ctrlKey || e.nativeEvent.metaKey);
+              // Press on an unselected note selects it and can drag it right away
+              onNoteSelect([clickedNote.id]);
+              startNoteDrag([clickedNote.id]);
             }
           } else {
             // Double-click empty space → edit nearby stop/bpm event
@@ -582,6 +672,8 @@ function EditorCanvas({
         case 'addNote': {
           const isBgm = isBgmLaneId(column) || selectedNoteType === 'bgm';
           const isLN = !isBgm && selectedNoteType === 'longNote';
+          // Long-note tool on an existing note: drag its end (a short note becomes a long note)
+          if (isLN && tryStartLongNoteResize(world.x, world.y, clientX, clientY, true)) break;
           if (isLN) {
             // Start LN drag creation — finalized on pointerUp
             setLnDragCreate({ startBeat: beat, column, currentEndBeat: beat + Math.max(4 / gridSnap, 0.25) });
@@ -617,9 +709,12 @@ function EditorCanvas({
         case 'move': {
           const clickedNote = findNoteAtPosition(world.x, world.y);
           if (clickedNote) {
-            if (!selectedNotes.has(clickedNote.id)) onNoteSelect([clickedNote.id]);
-            setIsDragging(true);
-            setDragStart({ x: world.x, y: world.y });
+            if (selectedNotes.has(clickedNote.id)) {
+              startNoteDrag(Array.from(selectedNotes));
+            } else {
+              onNoteSelect([clickedNote.id]);
+              startNoteDrag([clickedNote.id]);
+            }
           }
           break;
         }
@@ -647,7 +742,7 @@ function EditorCanvas({
         }
       }
     },
-    [activeTool, screenToWorld, worldToLaneBeat, findNoteAtPosition, findLongNoteEndAtPosition, selectedNotes, selectedNoteType, currentKeysound, baseBpm, beatScale, totalBeats, onNoteAdd, onNoteDelete, onNoteSelect, onBpmChange, onBpmRequest, onBpmEditRequest, onStopRequest, onStopEditRequest, onStopDelete, stopEvents, onKeysoundAssign]
+    [activeTool, screenToWorld, worldToLaneBeat, findNoteAtPosition, tryStartLongNoteResize, selectedNotes, selectedNoteType, currentKeysound, baseBpm, beatScale, totalBeats, gridSnap, bpmChanges, onNoteAdd, onNoteDelete, onNoteSelect, onBpmChange, onBpmRequest, onBpmEditRequest, onStopRequest, onStopEditRequest, onStopDelete, stopEvents, onKeysoundAssign]
   );
 
   // Pointer released outside the canvas: the R3F group never sees the
@@ -700,17 +795,19 @@ function EditorCanvas({
         return;
       }
 
-      if (resizing && onNoteUpdate) {
-        const world = screenToWorld(e.nativeEvent.clientX, e.nativeEvent.clientY);
-        const dragPixelDist = dragStart ? Math.abs(world.y - dragStart.y) : 0;
-        if (dragPixelDist > 3) {
-          const rawBeat = world.y / beatScale;
-          const snappedBeat = snapBeatToGrid(rawBeat, gridSnap);
+      const { clientX, clientY } = e.nativeEvent;
+      const pointerTravel = Math.hypot(clientX - pressClientRef.current.x, clientY - pressClientRef.current.y);
+
+      if (resizing) {
+        if (onNoteUpdate && pointerTravel >= DRAG_THRESHOLD_PX) {
+          const world = screenToWorld(clientX, clientY);
           const note = notes.find((n) => n.id === resizing.noteId);
           if (note) {
-            const minEnd = note.beat + Math.max(4 / gridSnap, 0.25);
-            const newEndBeat = Math.max(snappedBeat, minEnd);
-            if (Math.abs(newEndBeat - resizing.startEndBeat) > 0.001) onNoteUpdate(resizing.noteId, { endBeat: newEndBeat });
+            const newEndBeat = resizeEndBeat(world.y, note);
+            // A short note always changes (it becomes a long note); a long note only if its end moved
+            if (note.endBeat === undefined || Math.abs(newEndBeat - resizing.startEndBeat) > 0.001) {
+              onNoteUpdate(resizing.noteId, { endBeat: newEndBeat });
+            }
           }
         }
         setResizing(null); setDragStart(null); setDragDelta(null);
@@ -727,8 +824,10 @@ function EditorCanvas({
         return;
       }
 
-      if (isDragging && dragStart && selectedNotes.size > 0) {
-        const world = screenToWorld(e.nativeEvent.clientX, e.nativeEvent.clientY);
+      const dragIds = dragNoteIdsRef.current;
+      // Below the drag threshold the press was just a click (selection only)
+      if (isDragging && dragStart && dragIds.length > 0 && pointerTravel >= DRAG_THRESHOLD_PX) {
+        const world = screenToWorld(clientX, clientY);
         const { column: newColumn, beat: newBeat } = worldToLaneBeat(world.x, world.y);
         const { column: startColumn, beat: startBeat } = worldToLaneBeat(dragStart.x, dragStart.y);
         if (newColumn && startColumn) {
@@ -739,15 +838,15 @@ function EditorCanvas({
             // Playable → BGM: convert note type (beat shift only, no column delta)
             const beatDelta = newBeat - startBeat;
             if (Math.abs(beatDelta) > 0.01) {
-              onNoteMove(Array.from(selectedNotes), { beat: beatDelta }, gridSnap);
+              onNoteMove(dragIds, { beat: beatDelta }, gridSnap);
             }
             // Change type to BGM with target channel
             const targetChannel = bgmLaneIdToChannel(newColumn);
             if (onNotesConvert) {
               // One batched call (single undo step); the host spreads notes over distinct channels
-              onNotesConvert(Array.from(selectedNotes), { kind: 'bgm', channel: targetChannel });
+              onNotesConvert(dragIds, { kind: 'bgm', channel: targetChannel });
             } else {
-              for (const noteId of selectedNotes) {
+              for (const noteId of dragIds) {
                 onNoteUpdate?.(noteId, { noteType: 'bgm', column: undefined, bgmChannel: targetChannel });
               }
             }
@@ -755,13 +854,13 @@ function EditorCanvas({
             // BGM → Playable: convert note type
             const beatDelta = newBeat - startBeat;
             if (Math.abs(beatDelta) > 0.01) {
-              onNoteMove(Array.from(selectedNotes), { beat: beatDelta }, gridSnap);
+              onNoteMove(dragIds, { beat: beatDelta }, gridSnap);
             }
             if (onNotesConvert) {
               // One batched call (single undo step); the host spreads notes over distinct columns
-              onNotesConvert(Array.from(selectedNotes), { kind: 'playable', column: newColumn });
+              onNotesConvert(dragIds, { kind: 'playable', column: newColumn });
             } else {
-              for (const noteId of selectedNotes) {
+              for (const noteId of dragIds) {
                 onNoteUpdate?.(noteId, { noteType: 'playable', column: newColumn, bgmChannel: undefined });
               }
             }
@@ -772,7 +871,7 @@ function EditorCanvas({
             const endLaneIdx = lanes.findIndex((l) => l.id === newColumn);
             const colDelta = endLaneIdx - startLaneIdx;
             if (Math.abs(beatDelta) > 0.01 || colDelta !== 0) {
-              onNoteMove(Array.from(selectedNotes), { beat: beatDelta, columnDelta: colDelta !== 0 ? colDelta : undefined }, gridSnap);
+              onNoteMove(dragIds, { beat: beatDelta, columnDelta: colDelta !== 0 ? colDelta : undefined }, gridSnap);
             }
           }
         }
@@ -780,7 +879,7 @@ function EditorCanvas({
 
       setIsDragging(false); setDragStart(null); setDragDelta(null);
     },
-    [isDragging, dragStart, selectedNotes, screenToWorld, worldToLaneBeat, onNoteMove, onNoteUpdate, onNotesConvert, rubberBand, resizing, notes, beatScale, gridSnap, findNotesInRect, onNoteSelect, lanes, lnDragCreate, currentKeysound, onNoteAdd]
+    [isDragging, dragStart, screenToWorld, worldToLaneBeat, onNoteMove, onNoteUpdate, onNotesConvert, rubberBand, resizing, notes, gridSnap, findNotesInRect, onNoteSelect, lanes, lnDragCreate, currentKeysound, onNoteAdd, resizeEndBeat]
   );
 
   return (
@@ -814,17 +913,24 @@ function EditorCanvas({
       {lnDragCreate && (() => {
         const lane = lanes.find((l) => l.id === lnDragCreate.column);
         if (!lane) return null;
-        const x = offsetX + lane.x + lane.width / 2;
-        const w = lane.width - 2;
-        const y1 = lnDragCreate.startBeat * beatScale + 1;
-        const y2 = lnDragCreate.currentEndBeat * beatScale + 1;
-        const bodyY = (y1 + y2) / 2;
         return (
-          <group>
-            <mesh position={[x, y1, 3]}><planeGeometry args={[w, 2]} /><meshBasicMaterial color={lane.color} transparent opacity={0.6} /></mesh>
-            <mesh position={[x, bodyY, 2]}><planeGeometry args={[w, Math.abs(y2 - y1)]} /><meshBasicMaterial color={lane.color} transparent opacity={0.25} /></mesh>
-            <mesh position={[x, y2, 3]}><planeGeometry args={[w, 2]} /><meshBasicMaterial color={lane.color} transparent opacity={0.6} /></mesh>
-          </group>
+          <LongNotePreview
+            x={offsetX + lane.x + lane.width / 2} width={lane.width - 2} noteHeight={noteHeight} color={lane.color}
+            startY={lnDragCreate.startBeat * beatScale + noteHeight / 2}
+            endY={lnDragCreate.currentEndBeat * beatScale + noteHeight / 2}
+          />
+        );
+      })()}
+      {resizing && dragDelta && (() => {
+        const note = notes.find((n) => n.id === resizing.noteId);
+        const lane = note?.column !== undefined ? laneMap.get(note.column) : undefined;
+        if (!note || !lane) return null;
+        return (
+          <LongNotePreview
+            x={offsetX + lane.x + lane.width / 2} width={lane.width - 2} noteHeight={noteHeight} color={lane.color}
+            startY={note.beat * beatScale + noteHeight / 2}
+            endY={(resizing.startEndBeat + dragDelta.beatDelta) * beatScale + noteHeight / 2}
+          />
         );
       })()}
       {isDragging && dragDelta && selectedNotes.size > 0 && (

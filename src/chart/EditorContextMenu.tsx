@@ -18,6 +18,8 @@ import {
   EyeOff,
   Bomb,
   Music,
+  ArrowUpToLine,
+  Minus,
 } from 'lucide-react';
 import type { NoteType } from '@rhythm-archive/bms-core';
 import { useI18n } from '../i18n';
@@ -42,6 +44,10 @@ interface EditorContextMenuProps {
   onClearSelection: () => void;
   /** Callback: change note type */
   onChangeType?: (newType: NoteType) => void;
+  /** Callback: turn the selected short notes into long notes */
+  onConvertToLongNote?: () => void;
+  /** Callback: turn the selected long notes back into short notes */
+  onConvertToShortNote?: () => void;
 }
 
 const menuItemStyle: React.CSSProperties = {
@@ -88,6 +94,8 @@ export const EditorContextMenu = React.memo(function EditorContextMenu({
   onSelectAll,
   onClearSelection,
   onChangeType,
+  onConvertToLongNote,
+  onConvertToShortNote,
 }: EditorContextMenuProps) {
   const { t } = useI18n();
   const hasSelection = selectedCount > 0;
@@ -226,6 +234,36 @@ export const EditorContextMenu = React.memo(function EditorContextMenu({
             {t('contextMenu.deleteCount', { count: selectedCount })}
             <span style={shortcutStyle}>Del</span>
           </button>
+
+          {/* Long note conversion */}
+          {hasSelection && (onConvertToLongNote || onConvertToShortNote) && (
+            <>
+              <div style={separatorStyle} />
+              {onConvertToLongNote && (
+                <button
+                  style={menuItemStyle}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = '#2a2a3e'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+                  onClick={() => handleAction(onConvertToLongNote)}
+                >
+                  <ArrowUpToLine style={{ width: 16, height: 16 }} />
+                  {t('contextMenu.toLongNote')}
+                  <span style={shortcutStyle}>L</span>
+                </button>
+              )}
+              {onConvertToShortNote && (
+                <button
+                  style={menuItemStyle}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = '#2a2a3e'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+                  onClick={() => handleAction(onConvertToShortNote)}
+                >
+                  <Minus style={{ width: 16, height: 16 }} />
+                  {t('contextMenu.toShortNote')}
+                </button>
+              )}
+            </>
+          )}
 
           {/* Note type change */}
           {hasSelection && onChangeType && (

@@ -105,3 +105,50 @@ export function findClosestNoteByBeat<T extends BeatSortable>(
   }
   return best;
 }
+
+/** A note's hit box never gets thinner than this many screen pixels above and below its centre. */
+export const MIN_NOTE_HIT_HALF_PX = 7;
+
+/**
+ * Half-height, in world units, of a note's hit box: the drawn note plus a small
+ * margin, and never under MIN_NOTE_HIT_HALF_PX screen pixels at the camera's
+ * `zoom` (wide key modes zoom out, which would otherwise shrink the target).
+ */
+export function noteHitHalfHeight(noteHeight: number, zoom: number): number {
+  const z = zoom > 0 && Number.isFinite(zoom) ? zoom : 1;
+  return Math.max(noteHeight / 2 + 2, MIN_NOTE_HIT_HALF_PX / z);
+}
+
+/**
+ * The long note whose end lies closest to `beat` (strictly within `tolerance`)
+ * among `match`ing notes, with its distance. Notes without `endBeat` are skipped.
+ */
+export function findClosestLongNoteEnd<T extends BeatSortable>(
+  longNotes: readonly T[],
+  beat: number,
+  tolerance: number,
+  match: (note: T) => boolean
+): { note: T; dist: number } | null {
+  let best: { note: T; dist: number } | null = null;
+  for (const note of longNotes) {
+    if (note.endBeat === undefined) continue;
+    const dist = Math.abs(note.endBeat - beat);
+    if (dist >= tolerance || (best !== null && dist >= best.dist)) continue;
+    if (!match(note)) continue;
+    best = { note, dist };
+  }
+  return best;
+}
+
+/** The first `match`ing long note whose body (head to end) covers `beat`. */
+export function findLongNoteBodyAt<T extends BeatSortable>(
+  longNotes: readonly T[],
+  beat: number,
+  match: (note: T) => boolean
+): T | null {
+  for (const note of longNotes) {
+    if (note.endBeat === undefined || beat < note.beat || beat > note.endBeat) continue;
+    if (match(note)) return note;
+  }
+  return null;
+}

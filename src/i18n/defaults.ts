@@ -245,6 +245,8 @@ export const defaultMessages = {
     selectAll: 'Select All',
     deselect: 'Deselect',
     changeNoteType: 'Change Note Type',
+    toLongNote: 'Convert to Long Note',
+    toShortNote: 'Convert to Short Note',
     types: {
       playable: 'Playable',
       invisible: 'Invisible',

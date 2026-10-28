@@ -6,6 +6,10 @@ import {
   instanceCapacity,
   maxNotesInBeatWindow,
   findClosestNoteByBeat,
+  noteHitHalfHeight,
+  MIN_NOTE_HIT_HALF_PX,
+  findClosestLongNoteEnd,
+  findLongNoteBodyAt,
 } from '../src/chart/editor/noteIndex';
 
 type N = { id: string; beat: number; endBeat?: number; column?: string };
@@ -125,5 +129,54 @@ describe('findClosestNoteByBeat', () => {
   it('prefers the first note among equally close ones (stable order)', () => {
     const stacked = sortNotesByBeat([n('first', 2), n('second', 2)]);
     expect(findClosestNoteByBeat(stacked, 2, 0.1, () => true)?.id).toBe('first');
+  });
+});
+
+describe('noteHitHalfHeight', () => {
+  it('covers the drawn note plus a margin at normal zoom', () => {
+    expect(noteHitHalfHeight(4, 4)).toBe(4);
+    expect(noteHitHalfHeight(8, 1)).toBe(MIN_NOTE_HIT_HALF_PX);
+    expect(noteHitHalfHeight(20, 1)).toBe(12);
+  });
+
+  it('never falls under MIN_NOTE_HIT_HALF_PX screen pixels when zoomed out', () => {
+    expect(noteHitHalfHeight(4, 0.5)).toBe(MIN_NOTE_HIT_HALF_PX * 2);
+    expect(noteHitHalfHeight(2, 0.25)).toBe(MIN_NOTE_HIT_HALF_PX * 4);
+  });
+
+  it('treats a bad zoom as 1', () => {
+    expect(noteHitHalfHeight(4, 0)).toBe(MIN_NOTE_HIT_HALF_PX);
+    expect(noteHitHalfHeight(4, NaN)).toBe(MIN_NOTE_HIT_HALF_PX);
+  });
+});
+
+describe('findClosestLongNoteEnd', () => {
+  const lns = [n('a', 0, '1', 2), n('b', 1, '1', 2.1), n('c', 0, '2', 2), n('s', 2)];
+  const inLane1 = (x: N) => x.column === '1';
+
+  it('returns the closest end within tolerance, with its distance', () => {
+    const hit = findClosestLongNoteEnd(lns, 2.08, 0.2, inLane1);
+    expect(hit?.note.id).toBe('b');
+    expect(hit?.dist).toBeCloseTo(0.02);
+  });
+
+  it('ignores short notes, non-matching notes and ends outside the tolerance', () => {
+    expect(findClosestLongNoteEnd(lns, 2.5, 0.2, inLane1)).toBeNull();
+    expect(findClosestLongNoteEnd([n('s', 2)], 2, 0.2, () => true)).toBeNull();
+    expect(findClosestLongNoteEnd(lns, 2, 0.2, (x) => x.column === '3')).toBeNull();
+  });
+});
+
+describe('findLongNoteBodyAt', () => {
+  const lns = [n('a', 0, '1', 4), n('b', 8, '1', 9)];
+
+  it('finds the long note whose body covers the beat', () => {
+    expect(findLongNoteBodyAt(lns, 2, () => true)?.id).toBe('a');
+    expect(findLongNoteBodyAt(lns, 8.5, () => true)?.id).toBe('b');
+  });
+
+  it('returns null between long notes or when nothing matches', () => {
+    expect(findLongNoteBodyAt(lns, 6, () => true)).toBeNull();
+    expect(findLongNoteBodyAt(lns, 2, () => false)).toBeNull();
   });
 });
