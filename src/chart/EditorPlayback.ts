@@ -7,12 +7,21 @@
  */
 
 import type { EditableBMSNote, BMSBpmChange } from '@rhythm-archive/bms-core';
-import type { KeysoundPlayer } from './KeysoundPlayer';
+/**
+ * What playback needs from a keysound player. Both this package's
+ * KeysoundPlayer and the one it exports from bms-player satisfy it.
+ */
+export interface PlaybackKeysoundPlayer {
+  readonly isReady: boolean;
+  play(keysoundId: string, offset?: number, scheduledTime?: number, volume?: number): void;
+  stopAll(): void;
+  getContextTime(): number;
+}
 
 /** Playback options */
 export interface EditorPlaybackOptions {
   /** Keysound player */
-  player: KeysoundPlayer;
+  player: PlaybackKeysoundPlayer;
   /** Note array */
   notes: EditableBMSNote[];
   /** BPM change array */
@@ -101,7 +110,7 @@ export function timeToBeat(targetTime: number, bpmEvents: BpmEvent[]): number {
 }
 
 export class EditorPlayback {
-  private player: KeysoundPlayer;
+  private player: PlaybackKeysoundPlayer;
   private bpmEvents: BpmEvent[];
   private onBeatUpdate: (beat: number) => void;
   private onEnd: () => void;

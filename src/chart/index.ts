@@ -57,7 +57,7 @@ export type {
 // Editor Panels
 export { EditorContextMenu } from './EditorContextMenu';
 export { EditorPlayback, buildBeatToTimeMap, beatToTime } from './EditorPlayback';
-export type { EditorPlaybackOptions, BpmEvent } from './EditorPlayback';
+export type { EditorPlaybackOptions, BpmEvent, PlaybackKeysoundPlayer } from './EditorPlayback';
 
 // Panels
 export { HeaderEditorPanel } from './panels/HeaderEditorPanel';

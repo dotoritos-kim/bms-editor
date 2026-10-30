@@ -6,7 +6,7 @@
  * Supports automatic .wav/.ogg extension fallback from the Worker.
  */
 
-import { AudioPreloader, type FileMap, type WorkerFactory, type AudioPreloaderOptions } from '@rhythm-archive/bms-player';
+import { AudioPreloader, createAudioLoaderWorker, type FileMap, type WorkerFactory, type AudioPreloaderOptions } from '@rhythm-archive/bms-player';
 import { getErrorMessage } from '../utils';
 import { narrowKeysoundWorkerMessage } from './workerMessages';
 
@@ -49,7 +49,7 @@ export interface KeysoundPlayerOptions {
   performanceMode?: boolean;
   /** Use simplified effects (default: false) */
   simplifiedEffects?: boolean;
-  /** Worker factory (function that creates an AudioLoader Worker instance) */
+  /** Worker factory (function that creates an AudioLoader Worker instance; default: createAudioLoaderWorker) */
   workerFactory?: WorkerFactory;
 }
 
@@ -82,7 +82,7 @@ export class KeysoundPlayer {
       keysounds: options.keysounds,
       performanceMode: options.performanceMode ?? true,
       simplifiedEffects: options.simplifiedEffects ?? false,
-      workerFactory: options.workerFactory ?? (() => { throw new Error('workerFactory is required for KeysoundPlayer'); }),
+      workerFactory: options.workerFactory ?? createAudioLoaderWorker,
     };
 
     // Apply performance optimization options

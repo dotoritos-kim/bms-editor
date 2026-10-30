@@ -52,7 +52,7 @@ export type { LaneConfig } from './chart';
 
 // Editor Playback
 export { EditorPlayback, buildBeatToTimeMap, beatToTime } from './chart';
-export type { EditorPlaybackOptions, BpmEvent } from './chart';
+export type { EditorPlaybackOptions, BpmEvent, PlaybackKeysoundPlayer } from './chart';
 
 // Editor Context Menu
 export { EditorContextMenu } from './chart/EditorContextMenu';
