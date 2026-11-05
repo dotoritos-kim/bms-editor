@@ -490,10 +490,10 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
               <X className="h-3 w-3" />
             </button>
           </div>
-          <div className="flex gap-1">
+          <div className="flex flex-col gap-1">
             <button
               onClick={() => onSelectNotesByKeysounds?.(checkedIds, { bgmOnly: true })}
-              className="flex-1 px-2 py-1 rounded bg-purple-800/50 text-purple-100 hover:bg-purple-700/60 transition-colors"
+              className="w-full px-2 py-1 rounded bg-purple-800/50 text-purple-100 hover:bg-purple-700/60 transition-colors truncate"
               title={t('panels.keysound.selectBgmNotesTooltip')}
               data-testid="keysound-checked-select-bgm"
             >
@@ -501,8 +501,9 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
             </button>
             <button
               onClick={() => onSelectNotesByKeysounds?.(checkedIds, { bgmOnly: false })}
-              className="flex-1 px-2 py-1 rounded bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition-colors"
+              className="w-full px-2 py-1 rounded bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition-colors truncate"
               title={t('panels.keysound.selectAllNotesTooltip')}
+              data-testid="keysound-checked-select-all"
             >
               {t('panels.keysound.selectAllNotes')}
             </button>
@@ -513,7 +514,11 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
       <div className="px-3 py-2 border-t text-xs text-muted-foreground">
         {t('panels.keysound.countSummary', { count: Object.keys(keysounds).length })}
         {searchQuery && ` ${t('panels.keysound.filteredSummary', { count: entries.length })}`}
-        {multiSelect && <div className="mt-0.5 text-zinc-500">{t('panels.keysound.multiSelectHint')}</div>}
+        {multiSelect && (
+          <div className="mt-0.5 text-zinc-500 truncate cursor-help" title={t('panels.keysound.multiSelectHintDetail')}>
+            {t('panels.keysound.multiSelectHint')}
+          </div>
+        )}
       </div>
 
       {/* Context menu */}
