@@ -31,6 +31,7 @@ import {
   type NoteChartEditorProps,
   type CoordConverter,
   type LayerKey,
+  type DragAxisLock,
 } from './editor/types';
 
 /** Default beatScale per key mode (px/beat) */
@@ -52,6 +53,12 @@ import {
 
 /** Pointer travel (screen px) below which a press on a note is a click, not a drag. */
 const DRAG_THRESHOLD_PX = 4;
+
+/** Canvas width vs. visible width in screen px (horizontal scrollbar extents). */
+interface HScrollMetrics { contentPx: number; viewPx: number }
+
+/** Height (px) of the horizontal scrollbar shown when the lanes overflow. */
+const H_SCROLLBAR_PX = 12;
 
 /** Only playable lane notes can become long notes. */
 function canBeLongNote(note: EditableBMSNote): boolean {
@@ -91,6 +98,7 @@ export type {
   GridSnap,
   NoteChartEditorProps,
   NoteConvertTarget,
+  DragAxisLock,
   ZoomControl,
   CustomNoteColors,
   LayerKey,
@@ -137,12 +145,23 @@ function EditorCanvas({
   coordConverterRef,
   scrollBeatImperativeRef,
   bgmChannelCount,
+  bgmLanesInView,
+  dragAxisLock = 'free',
   zoomControlRef,
   onBeatScaleChange,
   customColors,
+  hScrollElRef,
+  hScrollPanRef,
+  onHScrollMetrics,
 }: Omit<NoteChartEditorProps, 'height' | 'className' | 'hasUnsavedChanges' | 'branchName' | 'noteHeight'> & {
   coordConverterRef?: React.MutableRefObject<CoordConverter | null>;
   scrollBeatImperativeRef?: React.RefObject<number>;
+  /** Horizontal scrollbar element (Shift+wheel scrolls it) */
+  hScrollElRef: React.RefObject<HTMLDivElement | null>;
+  /** Horizontal scroll offset in screen px (scrollbar scrollLeft) */
+  hScrollPanRef: React.RefObject<number>;
+  /** Reports the content / viewport width in screen px for the scrollbar */
+  onHScrollMetrics: (metrics: HScrollMetrics) => void;
 }) {
   const { camera, gl, size } = useThree();
   const noteHeight = useNoteHeight();
@@ -165,6 +184,8 @@ function EditorCanvas({
   const dragNoteIdsRef = useRef<string[]>([]);
   // Screen position of the pointer-down that started a drag / resize
   const pressClientRef = useRef({ x: 0, y: 0 });
+  // Axis a 'auto' axis-locked drag settled on (null until the pointer has moved)
+  const dragAxisRef = useRef<'x' | 'y' | null>(null);
   const pendingBeatScaleRef = useRef<number | null>(null);
   // Suppress hover preview during scroll (wheel)
   const scrollSuppressRef = useRef(false);
@@ -189,8 +210,22 @@ function EditorCanvas({
 
   const CONTENT_PADDING = 85;
   const contentWidth = totalWidth + CONTENT_PADDING;
+  // Width fitted on screen: every lane, or the key lanes + `bgmLanesInView`
+  // BGM lanes (the rest is reached by scrolling sideways).
+  const fitWidth = useMemo(() => {
+    if (bgmLanesInView === undefined) return totalWidth;
+    const firstBgm = lanes.findIndex((l) => l.isBgm);
+    const lastShown = lanes[firstBgm + Math.max(1, Math.floor(bgmLanesInView)) - 1];
+    return firstBgm < 0 || !lastShown ? totalWidth : lastShown.x + lastShown.width;
+  }, [lanes, totalWidth, bgmLanesInView]);
+  const viewContentWidth = fitWidth + CONTENT_PADDING;
   // Camera zoom the useFrame below converges to (fit content width, max 4x).
-  const targetZoom = size.width > 0 && contentWidth > 0 ? Math.min(size.width / contentWidth, 4) : 1;
+  const targetZoom = size.width > 0 && viewContentWidth > 0 ? Math.min(size.width / viewContentWidth, 4) : 1;
+
+  // Scrollbar extents (screen px); no scrollbar when everything fits
+  useEffect(() => {
+    onHScrollMetrics({ contentPx: Math.ceil(contentWidth * targetZoom), viewPx: size.width });
+  }, [contentWidth, targetZoom, size.width, onHScrollMetrics]);
   // World-space viewport height in beats. Must divide by the zoom: with a wide
   // lane layout (zoom < 1) the screen shows more beats than size.height / beatScale.
   const viewportBeats = size.height / (targetZoom > 0 ? targetZoom : 1) / beatScale;
@@ -226,6 +261,13 @@ function EditorCanvas({
       scrollSuppressRef.current = true;
       if (scrollSuppressTimerRef.current) clearTimeout(scrollSuppressTimerRef.current);
       scrollSuppressTimerRef.current = setTimeout(() => { scrollSuppressRef.current = false; }, 150);
+      // Shift+wheel / sideways wheel → horizontal scroll (when the lanes overflow)
+      const sideways = Math.abs(e.deltaX) > Math.abs(e.deltaY);
+      const hScrollEl = hScrollElRef.current;
+      if (hScrollEl && (e.shiftKey || sideways) && !(e.ctrlKey || e.metaKey)) {
+        hScrollEl.scrollLeft += sideways ? e.deltaX : e.deltaY;
+        return;
+      }
       if (e.ctrlKey || e.metaKey) {
         const factor = e.deltaY > 0 ? (1 / 1.15) : 1.15;
         const newScale = Math.max(2, Math.min(200, Math.round(beatScaleRef.current * factor)));
@@ -248,7 +290,7 @@ function EditorCanvas({
     };
     gl.domElement.addEventListener('wheel', handleWheel, { passive: false });
     return () => gl.domElement.removeEventListener('wheel', handleWheel);
-  }, [gl.domElement, totalBeats]);
+  }, [gl.domElement, totalBeats, hScrollElRef]);
 
   // Tool-specific cursor (+ grabbing when dragging)
   useEffect(() => {
@@ -291,14 +333,16 @@ function EditorCanvas({
   // Camera update
   const contentWidthRef = useRef(contentWidth);
   contentWidthRef.current = contentWidth;
+  const viewContentWidthRef = useRef(viewContentWidth);
+  viewContentWidthRef.current = viewContentWidth;
 
   // Priority -1: update the camera before the renderers' useFrame callbacks so
   // their camera-based viewport culling sees this frame's position (no lag).
   // Negative priorities do not take over R3F's render loop.
   useFrame(() => {
     const orthoCamera = camera as THREE.OrthographicCamera;
-    if (size.width > 0 && contentWidthRef.current > 0) {
-      const targetZoom = Math.min(size.width / contentWidthRef.current, 4);
+    if (size.width > 0 && viewContentWidthRef.current > 0) {
+      const targetZoom = Math.min(size.width / viewContentWidthRef.current, 4);
       const diff = Math.abs(orthoCamera.zoom - targetZoom);
       if (diff > 0.001) {
         orthoCamera.zoom = diff < 0.01 ? targetZoom : THREE.MathUtils.lerp(orthoCamera.zoom, targetZoom, 0.15);
@@ -306,6 +350,11 @@ function EditorCanvas({
       }
     }
     const zoom = orthoCamera.zoom || 1;
+    // Horizontal: content is centred on x = 0; the scrollbar offset pans from its left edge
+    const halfOverflow = (contentWidthRef.current - size.width / zoom) / 2;
+    camera.position.x = halfOverflow > 0
+      ? Math.min(halfOverflow, -halfOverflow + (hScrollPanRef.current ?? 0) / zoom)
+      : 0;
     const viewportHeight = size.height / zoom;
     viewportBeatsRef.current = viewportHeight / beatScaleRef.current;
     const effectiveScrollBeat = scrollBeatImperativeRef?.current ?? scrollBeatRef.current;
@@ -585,6 +634,27 @@ function EditorCanvas({
     [sortedNotes, laneMap, offsetX, beatScale, noteHeight]
   );
 
+  /**
+   * Pointer position a note drag uses, with `dragAxisLock` applied: the locked
+   * coordinate stays at the press point, so the notes keep their timing
+   * (horizontal) or lane (vertical).
+   */
+  const constrainDragPoint = useCallback(
+    (world: { x: number; y: number }, clientX: number, clientY: number) => {
+      if (!dragStart || dragAxisLock === 'free') return world;
+      let axis: 'x' | 'y' | null = dragAxisLock === 'horizontal' ? 'x' : dragAxisLock === 'vertical' ? 'y' : dragAxisRef.current;
+      if (axis === null) {
+        const dx = Math.abs(clientX - pressClientRef.current.x);
+        const dy = Math.abs(clientY - pressClientRef.current.y);
+        if (Math.max(dx, dy) < DRAG_THRESHOLD_PX) return { x: dragStart.x, y: dragStart.y };
+        axis = dx > dy ? 'x' : 'y';
+        dragAxisRef.current = axis;
+      }
+      return axis === 'x' ? { x: world.x, y: dragStart.y } : { x: dragStart.x, y: world.y };
+    },
+    [dragStart, dragAxisLock]
+  );
+
   // Event handlers
   const handlePointerMove = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
@@ -624,9 +694,11 @@ function EditorCanvas({
 
       if (isDragging && dragStart && (activeTool === 'move' || activeTool === 'select')) {
         const { beat: startBeat } = worldToLaneBeat(dragStart.x, dragStart.y);
-        const beatDelta = beat - startBeat;
+        const target = constrainDragPoint(world, clientX, clientY);
+        const { column: dragColumn, beat: dragBeat } = worldToLaneBeat(target.x, target.y);
+        const beatDelta = dragBeat - startBeat;
         const startLaneIdx = lanes.findIndex((l) => { const relX = dragStart.x - offsetX; return relX >= l.x && relX < l.x + l.width; });
-        const endLaneIdx = lanes.findIndex((l) => l.id === column);
+        const endLaneIdx = lanes.findIndex((l) => l.id === dragColumn);
         const columnDelta = endLaneIdx >= 0 && startLaneIdx >= 0 ? endLaneIdx - startLaneIdx : 0;
         setDragDelta({ beatDelta, columnDelta });
       }
@@ -659,7 +731,7 @@ function EditorCanvas({
         setSnapGuideBeat(null);
       }
     },
-    [screenToWorld, worldToLaneBeat, isDragging, dragStart, rubberBand, activeTool, lanes, offsetX, resizing, notes, sortedNotes, beatScale, gridSnap, totalHeight, onNoteHover, findNoteAtPosition, pressTargetAt, resizeEndBeat, gl.domElement, lnDragCreate]
+    [screenToWorld, worldToLaneBeat, isDragging, dragStart, rubberBand, activeTool, lanes, offsetX, resizing, notes, sortedNotes, beatScale, gridSnap, totalHeight, onNoteHover, findNoteAtPosition, pressTargetAt, resizeEndBeat, gl.domElement, lnDragCreate, constrainDragPoint]
   );
 
   const handlePointerDown = useCallback(
@@ -679,6 +751,7 @@ function EditorCanvas({
       const startNoteDrag = (ids: string[]) => {
         dragNoteIdsRef.current = ids;
         pressClientRef.current = { x: clientX, y: clientY };
+        dragAxisRef.current = null;
         setIsDragging(true);
         setDragStart({ x: world.x, y: world.y });
       };
@@ -886,7 +959,7 @@ function EditorCanvas({
       const dragIds = dragNoteIdsRef.current;
       // Below the drag threshold the press was just a click (selection only)
       if (isDragging && dragStart && dragIds.length > 0 && pointerTravel >= DRAG_THRESHOLD_PX) {
-        const world = screenToWorld(clientX, clientY);
+        const world = constrainDragPoint(screenToWorld(clientX, clientY), clientX, clientY);
         const { column: newColumn, beat: newBeat } = worldToLaneBeat(world.x, world.y);
         const { column: startColumn, beat: startBeat } = worldToLaneBeat(dragStart.x, dragStart.y);
         if (newColumn && startColumn) {
@@ -938,7 +1011,7 @@ function EditorCanvas({
 
       setIsDragging(false); setDragStart(null); setDragDelta(null);
     },
-    [isDragging, dragStart, screenToWorld, worldToLaneBeat, onNoteMove, onNoteUpdate, onNotesConvert, rubberBand, resizing, notes, gridSnap, findNotesInRect, onNoteSelect, lanes, lnDragCreate, currentKeysound, onNoteAdd, resizeEndBeat]
+    [isDragging, dragStart, screenToWorld, worldToLaneBeat, onNoteMove, onNoteUpdate, onNotesConvert, rubberBand, resizing, notes, gridSnap, findNotesInRect, onNoteSelect, lanes, lnDragCreate, currentKeysound, onNoteAdd, resizeEndBeat, constrainDragPoint]
   );
 
   return (
@@ -1012,7 +1085,7 @@ export const NoteChartEditor = React.memo(function NoteChartEditor({
   notes, keyMode, totalBeats, height = 600, beatScale = 20, className,
   activeTool, gridSnap, snapEnabled, gridSnapOverrides, layerConfig, selectedNotes, selectedNoteType, currentKeysound,
   bpmChanges, stopEvents, baseBpm = 120, timeSignatures,
-  bgmChannelCount,
+  bgmChannelCount, bgmLanesInView, dragAxisLock,
   onNoteAdd, onNoteDelete, onNoteMove, onNoteSelect, onNoteUpdate, onNotesConvert,
   onBpmChange, onBpmRequest, onBpmEditRequest, onStopRequest, onStopEditRequest, onStopDelete,
   onKeysoundAssign, onDropKeysound, onNoteHover,
@@ -1023,6 +1096,17 @@ export const NoteChartEditor = React.memo(function NoteChartEditor({
   customColors,
 }: NoteChartEditorProps) {
   const coordConverterRef = useRef<CoordConverter | null>(null);
+  // Horizontal scrolling when the lanes are wider than the view
+  const hScrollElRef = useRef<HTMLDivElement | null>(null);
+  const hScrollPanRef = useRef(0);
+  const [hScroll, setHScroll] = useState<HScrollMetrics>({ contentPx: 0, viewPx: 0 });
+  const handleHScrollMetrics = useCallback((m: HScrollMetrics) => {
+    setHScroll((prev) => (prev.contentPx === m.contentPx && prev.viewPx === m.viewPx ? prev : m));
+  }, []);
+  const hOverflow = hScroll.viewPx > 0 && hScroll.contentPx > hScroll.viewPx + 1;
+  useEffect(() => {
+    if (!hOverflow) hScrollPanRef.current = 0;
+  }, [hOverflow]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -1055,7 +1139,7 @@ export const NoteChartEditor = React.memo(function NoteChartEditor({
   }, [onDropKeysound]);
 
   return (
-    <div className={cn('flex flex-col bg-background h-full', className)} onDragOver={handleDragOver} onDrop={handleDrop}>
+    <div className={cn('relative flex flex-col bg-background h-full', className)} onDragOver={handleDragOver} onDrop={handleDrop}>
       <Canvas
         style={{ height, minHeight: 0 }}
         orthographic
@@ -1076,7 +1160,8 @@ export const NoteChartEditor = React.memo(function NoteChartEditor({
           onStopRequest={onStopRequest} onStopEditRequest={onStopEditRequest} onStopDelete={onStopDelete}
           onKeysoundAssign={onKeysoundAssign} onDropKeysound={onDropKeysound} onNoteHover={onNoteHover}
           highlightKeysound={highlightKeysound}
-          bgmChannelCount={bgmChannelCount}
+          bgmChannelCount={bgmChannelCount} bgmLanesInView={bgmLanesInView} dragAxisLock={dragAxisLock}
+          hScrollElRef={hScrollElRef} hScrollPanRef={hScrollPanRef} onHScrollMetrics={handleHScrollMetrics}
           scrollToBeat={scrollToBeat} onScrollChange={onScrollChange}
           coordConverterRef={coordConverterRef} scrollBeatImperativeRef={scrollBeatImperativeRef}
           zoomControlRef={zoomControlRef} onBeatScaleChange={onBeatScaleChange}
@@ -1084,6 +1169,17 @@ export const NoteChartEditor = React.memo(function NoteChartEditor({
         />
         </NoteHeightContext.Provider>
       </Canvas>
+      {hOverflow && (
+        <div
+          ref={hScrollElRef}
+          data-testid="editor-hscroll"
+          className="absolute left-0 right-0 bottom-0 overflow-x-auto overflow-y-hidden bg-black/40"
+          style={{ height: H_SCROLLBAR_PX }}
+          onScroll={(e) => { hScrollPanRef.current = e.currentTarget.scrollLeft; }}
+        >
+          <div style={{ width: hScroll.contentPx, height: 1 }} />
+        </div>
+      )}
     </div>
   );
 });

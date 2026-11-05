@@ -44,6 +44,7 @@ export {
 export type {
   NoteChartEditorProps,
   NoteConvertTarget,
+  DragAxisLock,
   EditorTool,
   SelectedNoteType,
   GridSnap,

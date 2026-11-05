@@ -4,6 +4,8 @@
  * Keysound picker panel for the chart editor.
  * WAV list, search, click-to-select, playback preview,
  * usage count badge, right-click context menu, highlight toggle.
+ * Ctrl/Shift+click checks several keysounds (e.g. every sample of one
+ * instrument) to select all of their notes at once.
  *
  * Charts can define up to 1295 #WAV entries, so rows are memoized and the list
  * is windowed (fixed row height, only the visible rows + overscan are mounted)
@@ -11,7 +13,7 @@
  */
 
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Search, Volume2, Loader2, VolumeX, Upload, Crosshair, Replace, Trash2, Highlighter } from 'lucide-react';
+import { Search, Volume2, Loader2, VolumeX, Upload, Crosshair, Replace, Trash2, Highlighter, ListChecks, X } from 'lucide-react';
 import { cn } from '../../utils';
 import { useI18n } from '../../i18n';
 
@@ -44,6 +46,12 @@ interface KeysoundPanelProps {
   onHighlightKeysound?: (keysoundId: string | null) => void;
   /** Callback to select only the BGM notes for this keysound */
   onSelectBgmNotes?: (keysoundId: string) => void;
+  /**
+   * Callback to select the notes of several keysounds at once (Ctrl/Shift+click
+   * checks keysounds in the list). `bgmOnly` limits it to BGM notes.
+   * Multi-select is off when omitted.
+   */
+  onSelectNotesByKeysounds?: (keysoundIds: string[], options: { bgmOnly: boolean }) => void;
   /** Additional CSS class name */
   className?: string;
 }
@@ -72,10 +80,11 @@ interface KeysoundRowProps {
   label: string;
   indented: boolean;
   isSelected: boolean;
+  isChecked: boolean;
   isHighlighted: boolean;
   usageCount: number | undefined;
   previewTitle: string | undefined;
-  onSelect: (id: string) => void;
+  onSelect: (id: string, e: React.MouseEvent) => void;
   onPreview?: (e: React.MouseEvent, id: string) => void;
   onContextMenu?: (e: React.MouseEvent, id: string) => void;
   onDragStart: (e: React.DragEvent, id: string) => void;
@@ -87,6 +96,7 @@ const KeysoundRow = React.memo(function KeysoundRow({
   label,
   indented,
   isSelected,
+  isChecked,
   isHighlighted,
   usageCount,
   previewTitle,
@@ -97,7 +107,8 @@ const KeysoundRow = React.memo(function KeysoundRow({
 }: KeysoundRowProps) {
   return (
     <button
-      onClick={() => onSelect(id)}
+      onClick={(e) => onSelect(id, e)}
+      aria-pressed={isChecked || undefined}
       onDoubleClick={onPreview ? (e) => onPreview(e, id) : undefined}
       title={previewTitle}
       onContextMenu={onContextMenu ? (e) => onContextMenu(e, id) : undefined}
@@ -108,9 +119,11 @@ const KeysoundRow = React.memo(function KeysoundRow({
         'w-full flex items-center gap-2 px-3 text-xs border-b border-border/40 hover:bg-muted/50 transition-colors text-left cursor-grab active:cursor-grabbing',
         indented && 'pl-5',
         isSelected && 'bg-primary/10 text-primary',
+        isChecked && 'bg-purple-500/20 text-purple-200',
         isHighlighted && 'bg-orange-500/15 ring-1 ring-orange-500/40'
       )}
     >
+      <span className={cn('w-2 shrink-0 text-purple-300', !isChecked && 'invisible')} aria-hidden="true">✓</span>
       <span className="font-mono w-6 text-center shrink-0">{id}</span>
       <span className={cn('truncate flex-1', usageCount === 0 ? 'text-zinc-600 line-through' : 'text-muted-foreground')}>{label}</span>
       {usageCount !== undefined && (
@@ -130,11 +143,11 @@ const FolderRow = React.memo(function FolderRow({
   folder: string;
   count: number;
   collapsed: boolean;
-  onToggle: (folder: string) => void;
+  onToggle: (folder: string, e: React.MouseEvent) => void;
 }) {
   return (
     <button
-      onClick={() => onToggle(folder)}
+      onClick={(e) => onToggle(folder, e)}
       style={{ height: ROW_HEIGHT }}
       className="w-full flex items-center gap-1.5 px-3 text-xs font-semibold text-zinc-400 bg-zinc-900/50 hover:bg-zinc-800/50 border-b border-border/30"
     >
@@ -160,11 +173,17 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
   highlightKeysound,
   onHighlightKeysound,
   onSelectBgmNotes,
+  onSelectNotesByKeysounds,
   className,
 }: KeysoundPanelProps) {
   const { t } = useI18n();
   const [searchQuery, setSearchQuery] = useState('');
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
+  // Keysounds checked with Ctrl/Shift+click (multi-select)
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  // Shift+click range start: the last plainly clicked / Ctrl+clicked row
+  const anchorRef = useRef<string | null>(null);
+  const multiSelect = !!onSelectNotesByKeysounds;
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -254,20 +273,64 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
     };
   }, [virtualize, rows.length]);
 
-  const toggleFolder = useCallback((folder: string) => {
+  // Item rows in list order (Shift+click range)
+  const rowIds = useMemo(() => rows.flatMap((r) => (r.kind === 'item' ? [r.id] : [])), [rows]);
+
+  const toggleFolder = useCallback((folder: string, e?: React.MouseEvent) => {
+    // Ctrl+click a folder header: check / uncheck every keysound in it
+    if (multiSelect && e && (e.ctrlKey || e.metaKey)) {
+      const ids = (groupedEntries?.get(folder) ?? []).map(([id]) => id);
+      if (ids.length === 0) return;
+      setChecked((prev) => {
+        const next = new Set(prev);
+        const all = ids.every((id) => next.has(id));
+        for (const id of ids) {
+          if (all) next.delete(id); else next.add(id);
+        }
+        return next;
+      });
+      return;
+    }
     setCollapsedFolders((prev) => {
       const next = new Set(prev);
       if (next.has(folder)) next.delete(folder); else next.add(folder);
       return next;
     });
-  }, []);
+  }, [multiSelect, groupedEntries]);
 
   const handleSelect = useCallback(
-    (id: string) => {
+    (id: string, e?: React.MouseEvent) => {
+      const additive = !!e && (e.ctrlKey || e.metaKey);
+      if (multiSelect && e?.shiftKey) {
+        // Range from the anchor (or the current keysound) to this row
+        const from = rowIds.indexOf(anchorRef.current ?? currentKeysound);
+        const to = rowIds.indexOf(id);
+        const range = from < 0 || to < 0 ? [id] : rowIds.slice(Math.min(from, to), Math.max(from, to) + 1);
+        setChecked((prev) => new Set([...(additive ? prev : []), ...range]));
+        return;
+      }
+      if (multiSelect && additive) {
+        setChecked((prev) => {
+          const next = new Set(prev);
+          if (next.has(id)) next.delete(id); else next.add(id);
+          return next;
+        });
+        anchorRef.current = id;
+        return;
+      }
+      anchorRef.current = id;
+      setChecked((prev) => (prev.size === 0 ? prev : new Set()));
       onSelect(id);
     },
-    [onSelect]
+    [onSelect, multiSelect, rowIds, currentKeysound]
   );
+
+  // Checked keysounds that still exist (the WAV list can change)
+  const checkedIds = useMemo(
+    () => Object.keys(keysounds).filter((id) => checked.has(id)).sort((a, b) => a.localeCompare(b)),
+    [keysounds, checked]
+  );
+  const clearChecked = useCallback(() => setChecked(new Set()), []);
 
   // Double-click a keysound row to audition it (single click selects).
   const handlePreview = useCallback(
@@ -288,7 +351,7 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent, id: string) => {
-      if (!onFindNotes && !onReplaceKeysound && !onDeleteUnused && !onHighlightKeysound && !onSelectBgmNotes) return;
+      if (!onFindNotes && !onReplaceKeysound && !onDeleteUnused && !onHighlightKeysound && !onSelectBgmNotes && !onSelectNotesByKeysounds) return;
       e.preventDefault();
       e.stopPropagation();
       const panelRect = panelRef.current?.getBoundingClientRect();
@@ -296,7 +359,7 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
       const y = e.clientY - (panelRect?.top ?? 0);
       setContextMenu({ x, y, keysoundId: id });
     },
-    [onFindNotes, onReplaceKeysound, onDeleteUnused, onHighlightKeysound, onSelectBgmNotes]
+    [onFindNotes, onReplaceKeysound, onDeleteUnused, onHighlightKeysound, onSelectBgmNotes, onSelectNotesByKeysounds]
   );
 
   // Close context menu on outside click
@@ -311,7 +374,7 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
     return () => document.removeEventListener('mousedown', handleClick);
   }, [contextMenu]);
 
-  const hasContextMenu = !!(onFindNotes || onReplaceKeysound || onDeleteUnused || onHighlightKeysound || onSelectBgmNotes);
+  const hasContextMenu = !!(onFindNotes || onReplaceKeysound || onDeleteUnused || onHighlightKeysound || onSelectBgmNotes || onSelectNotesByKeysounds);
   const previewTitle = onPreview ? t('panels.keysound.previewHint') : undefined;
   const rowPreview = onPreview ? handlePreview : undefined;
   const rowContextMenu = hasContextMenu ? handleContextMenu : undefined;
@@ -397,6 +460,7 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
                     label={row.label}
                     indented={row.indented}
                     isSelected={currentKeysound === row.id}
+                    isChecked={checked.has(row.id)}
                     isHighlighted={highlightKeysound === row.id}
                     usageCount={keysoundUsageCounts?.[row.id] ?? undefined}
                     previewTitle={previewTitle}
@@ -412,9 +476,44 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
         )}
       </div>
 
+      {multiSelect && checkedIds.length > 0 && (
+        <div className="px-3 py-2 border-t bg-purple-950/30 text-xs space-y-1.5" data-testid="keysound-checked-bar">
+          <div className="flex items-center gap-1.5 text-purple-200">
+            <ListChecks className="h-3.5 w-3.5 shrink-0" />
+            <span className="flex-1 truncate">{t('panels.keysound.checkedSummary', { count: checkedIds.length })}</span>
+            <button
+              onClick={clearChecked}
+              className="p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+              title={t('panels.keysound.clearChecked')}
+              aria-label={t('panels.keysound.clearChecked')}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+          <div className="flex gap-1">
+            <button
+              onClick={() => onSelectNotesByKeysounds?.(checkedIds, { bgmOnly: true })}
+              className="flex-1 px-2 py-1 rounded bg-purple-800/50 text-purple-100 hover:bg-purple-700/60 transition-colors"
+              title={t('panels.keysound.selectBgmNotesTooltip')}
+              data-testid="keysound-checked-select-bgm"
+            >
+              {t('panels.keysound.selectBgmNotes')}
+            </button>
+            <button
+              onClick={() => onSelectNotesByKeysounds?.(checkedIds, { bgmOnly: false })}
+              className="flex-1 px-2 py-1 rounded bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition-colors"
+              title={t('panels.keysound.selectAllNotesTooltip')}
+            >
+              {t('panels.keysound.selectAllNotes')}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="px-3 py-2 border-t text-xs text-muted-foreground">
         {t('panels.keysound.countSummary', { count: Object.keys(keysounds).length })}
         {searchQuery && ` ${t('panels.keysound.filteredSummary', { count: entries.length })}`}
+        {multiSelect && <div className="mt-0.5 text-zinc-500">{t('panels.keysound.multiSelectHint')}</div>}
       </div>
 
       {/* Context menu */}
@@ -452,6 +551,15 @@ export const KeysoundPanel = React.memo(function KeysoundPanel({
             >
               <Volume2 className="h-3 w-3" />
               {t('panels.keysound.contextMenu.selectBgm')}
+            </button>
+          )}
+          {onSelectNotesByKeysounds && checkedIds.length > 1 && checked.has(contextMenu.keysoundId) && (
+            <button
+              className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-800 text-left text-purple-200"
+              onClick={() => { onSelectNotesByKeysounds(checkedIds, { bgmOnly: true }); setContextMenu(null); }}
+            >
+              <ListChecks className="h-3 w-3" />
+              {t('panels.keysound.contextMenu.selectBgmChecked', { count: checkedIds.length })}
             </button>
           )}
           {onReplaceKeysound && (

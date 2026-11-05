@@ -94,6 +94,15 @@ export type NoteConvertTarget =
   | { kind: 'bgm'; channel: number }
   | { kind: 'playable'; column: string };
 
+/**
+ * How dragged notes may move:
+ * - 'free': anywhere (default)
+ * - 'auto': along the axis the pointer first moves on (left/right or up/down)
+ * - 'horizontal': left/right only (timing kept)
+ * - 'vertical': up/down only (lane kept)
+ */
+export type DragAxisLock = 'free' | 'auto' | 'horizontal' | 'vertical';
+
 export interface NoteChartEditorProps {
   /** Array of notes to edit */
   notes: EditableBMSNote[];
@@ -133,6 +142,14 @@ export interface NoteChartEditorProps {
   layerConfig?: LayerConfig;
   /** BGM channel count (for multi-BGM lane creation; default 1) */
   bgmChannelCount?: number;
+  /**
+   * BGM lanes fitted on screen next to the key lanes. With more BGM lanes the
+   * canvas keeps this zoom and scrolls sideways (scrollbar / Shift+wheel).
+   * Default: every lane is fitted.
+   */
+  bgmLanesInView?: number;
+  /** Axis constraint for dragging notes (default 'free') */
+  dragAxisLock?: DragAxisLock;
 
   // Event handlers
   onNoteAdd: (note: Omit<EditableBMSNote, 'id'>) => void;
