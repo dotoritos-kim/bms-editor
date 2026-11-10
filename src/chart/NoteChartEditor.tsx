@@ -31,7 +31,6 @@ import {
   type NoteChartEditorProps,
   type CoordConverter,
   type LayerKey,
-  type DragAxisLock,
 } from './editor/types';
 
 /** Default beatScale per key mode (px/beat) */
