@@ -242,8 +242,12 @@ function EditorCanvas({
       prevExternalScrollRef.current = externalScrollBeat;
       const maxScroll = Math.max(0, totalBeats - viewportBeatsRef.current + 4);
       const clamped = Math.max(0, Math.min(maxScroll, externalScrollBeat));
-      isExternalUpdateRef.current = true;
-      setScrollBeat(clamped);
+      // Only flag it when the state actually changes — an unchanged value never runs the
+      // effect below, and a stale flag would swallow the next user scroll.
+      if (clamped !== scrollBeatRef.current) {
+        isExternalUpdateRef.current = true;
+        setScrollBeat(clamped);
+      }
     }
   }, [externalScrollBeat, totalBeats]);
 
@@ -280,6 +284,9 @@ function EditorCanvas({
         const maxScroll = Math.max(0, totalBeats - newViewportBeats + 4);
         setBeatScale(newScale);
         pendingBeatScaleRef.current = newScale;
+        // While playing, the view follows the playhead: zoom around it instead of moving
+        // the scroll position (which would seek the playback).
+        if (scrollBeatImperativeRef?.current !== undefined) return;
         setScrollBeat(Math.max(0, Math.min(maxScroll, newScrollBeat)));
       } else {
         const delta = e.deltaY > 0 ? -4 : 4;
@@ -289,7 +296,7 @@ function EditorCanvas({
     };
     gl.domElement.addEventListener('wheel', handleWheel, { passive: false });
     return () => gl.domElement.removeEventListener('wheel', handleWheel);
-  }, [gl.domElement, totalBeats, hScrollElRef]);
+  }, [gl.domElement, totalBeats, hScrollElRef, scrollBeatImperativeRef]);
 
   // Tool-specific cursor (+ grabbing when dragging)
   useEffect(() => {
