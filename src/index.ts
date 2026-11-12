@@ -49,6 +49,10 @@ export type { BmsChartInfo, UseBmsChartOptions, UseBmsChartState, UseBmsChartCon
 
 // Lane Config
 export { generateLaneConfig, getLaneIds, getDpSplitIndex } from './chart';
+
+// Grid snapping (the grid the editor draws: per measure, time-signature aware)
+export { snapBeatToMeasureGrid, gridStepAt, measureSpanAt } from './chart/editor/measureGrid';
+export type { MeasureSpan } from './chart/editor/measureGrid';
 export type { LaneConfig } from './chart';
 
 // Editor Playback

@@ -380,7 +380,7 @@ export const MeasureLinesRenderer = React.memo(function MeasureLinesRenderer({
     geometry.computeBoundingSphere();
 
     computedRangeRef.current = { min: minBeat, max: maxBeat, beatScale, gridSnap, halfWidth };
-  }, [totalBeats, beatScale, gridSnap, halfWidth, minBeat, maxBeat]);
+  }, [totalBeats, beatScale, gridSnap, halfWidth, minBeat, maxBeat, timeSignatures, gridSnapOverrides]);
 
   // Measure numbers — viewport only (time-signature aware)
   const measureLabels = useMemo(() => {

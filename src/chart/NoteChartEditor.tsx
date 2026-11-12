@@ -42,7 +42,8 @@ function defaultBeatScaleForKeyMode(keyMode: string): number {
   if (keyMode === '48K') return 4;
   return 20;
 }
-import { NoteHeightContext, useNoteHeight, snapBeatToGrid, getBgmLaneId, isBgmLaneId, bgmLaneIdToChannel } from './editor/editorUtils';
+import { NoteHeightContext, useNoteHeight, getBgmLaneId, isBgmLaneId, bgmLaneIdToChannel } from './editor/editorUtils';
+import { snapBeatToMeasureGrid } from './editor/measureGrid';
 import { LanesRenderer, MeasureLinesRenderer, BpmMarkersRenderer, StopMarkersRenderer, CurrentMeasureHighlight } from './editor/gridRenderers';
 import { NotesRenderer, HoverPreview, RubberBandRect, DragGhostNotes, NotePassEffect, EditorJudgmentLine } from './editor/noteRenderers';
 import {
@@ -414,10 +415,12 @@ function EditorCanvas({
       }
       const rawBeat = worldY / beatScale;
       // Snap 3-stage: snapEnabled OFF → free, Shift held → free, otherwise → grid snap
-      const beat = (snapEnabled && !shiftHeldRef.current) ? snapBeatToGrid(rawBeat, gridSnap) : rawBeat;
+      const beat = (snapEnabled && !shiftHeldRef.current)
+        ? snapBeatToMeasureGrid(rawBeat, gridSnap, timeSignatures, gridSnapOverrides)
+        : rawBeat;
       return { column, beat };
     },
-    [lanes, offsetX, beatScale, gridSnap, snapEnabled]
+    [lanes, offsetX, beatScale, gridSnap, snapEnabled, timeSignatures, gridSnapOverrides]
   );
 
   useEffect(() => {
@@ -611,12 +614,14 @@ function EditorCanvas({
   const resizeEndBeat = useCallback(
     (worldY: number, note: EditableBMSNote): number | undefined => {
       const rawEnd = (worldY - noteHeight / 2) / beatScale;
-      const end = (snapEnabled && !shiftHeldRef.current) ? snapBeatToGrid(rawEnd, gridSnap) : rawEnd;
+      const end = (snapEnabled && !shiftHeldRef.current)
+        ? snapBeatToMeasureGrid(rawEnd, gridSnap, timeSignatures, gridSnapOverrides)
+        : rawEnd;
       const minLength = Math.max(4 / gridSnap, 0.25);
       if (end < note.beat + minLength / 2) return undefined;
       return Math.max(end, note.beat + minLength);
     },
-    [noteHeight, beatScale, snapEnabled, gridSnap]
+    [noteHeight, beatScale, snapEnabled, gridSnap, timeSignatures, gridSnapOverrides]
   );
 
   const findNotesInRect = useCallback(
