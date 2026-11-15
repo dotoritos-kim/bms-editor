@@ -13,6 +13,11 @@
 import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 
 /** True when a keyboard event originates from a text-entry element (input, textarea, select, contenteditable). */
+/** Chart keys stay off while an overlay / modal (keysInert) or any dialog, such as the app's leave confirmation, owns the keyboard. */
+function isKeyboardBlocked(keysInert: boolean): boolean {
+  return keysInert || document.querySelector('[role="dialog"][aria-modal="true"]') !== null;
+}
+
 function isEditableEventTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;
@@ -108,6 +113,7 @@ export type {
 
 /** Internal editor canvas component */
 function EditorCanvas({
+  keysInert = false,
   notes,
   keyMode,
   totalBeats,
@@ -315,7 +321,7 @@ function EditorCanvas({
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (isEditableEventTarget(e.target)) return; // typing in a field — leave the keys alone
+      if (isEditableEventTarget(e.target) || isKeyboardBlocked(keysInert)) return; // typing in a field, or a dialog owns the keys
       switch (e.key) {
         case 'PageUp': {
           e.preventDefault();
@@ -335,7 +341,7 @@ function EditorCanvas({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [totalBeats]);
+  }, [totalBeats, keysInert]);
 
   // Camera update
   const contentWidthRef = useRef(contentWidth);
@@ -1093,7 +1099,7 @@ function EditorCanvas({
 
 /** Main NoteChartEditor component */
 export const NoteChartEditor = React.memo(function NoteChartEditor({
-  notes, keyMode, totalBeats, height = 600, beatScale = 20, className,
+  notes, keyMode, totalBeats, height = 600, beatScale = 20, className, keysInert = false,
   activeTool, gridSnap, snapEnabled, gridSnapOverrides, layerConfig, selectedNotes, selectedNoteType, currentKeysound,
   bpmChanges, stopEvents, baseBpm = 120, timeSignatures,
   bgmChannelCount, bgmLanesInView, dragAxisLock,
@@ -1121,7 +1127,7 @@ export const NoteChartEditor = React.memo(function NoteChartEditor({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (isEditableEventTarget(e.target)) return; // Delete inside an input edits text, not notes
+      if (isEditableEventTarget(e.target) || isKeyboardBlocked(keysInert)) return; // Delete inside an input edits text, not notes
       if (e.key === 'Delete' && selectedNotes.size > 0) {
         e.preventDefault();
         onNoteDelete(Array.from(selectedNotes));
@@ -1129,7 +1135,7 @@ export const NoteChartEditor = React.memo(function NoteChartEditor({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedNotes, onNoteDelete]);
+  }, [selectedNotes, onNoteDelete, keysInert]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     if (e.dataTransfer.types.includes('application/x-keysound-id')) {
@@ -1161,6 +1167,7 @@ export const NoteChartEditor = React.memo(function NoteChartEditor({
         <NoteHeightContext.Provider value={noteHeightProp}>
         <color attach="background" args={[customColors?.background ?? '#0a0a1a']} />
         <EditorCanvas
+          keysInert={keysInert}
           notes={notes} keyMode={keyMode} totalBeats={totalBeats} beatScale={beatScale}
           activeTool={activeTool} gridSnap={gridSnap} snapEnabled={snapEnabled} gridSnapOverrides={gridSnapOverrides} layerConfig={layerConfig} selectedNotes={selectedNotes}
           selectedNoteType={selectedNoteType} currentKeysound={currentKeysound}

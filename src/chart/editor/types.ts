@@ -104,6 +104,8 @@ export type NoteConvertTarget =
 export type DragAxisLock = 'free' | 'auto' | 'horizontal' | 'vertical';
 
 export interface NoteChartEditorProps {
+  /** An overlay or modal owns the keyboard: chart keys (Delete, arrows, paging) are ignored. */
+  keysInert?: boolean;
   /** Array of notes to edit */
   notes: EditableBMSNote[];
   /** Key mode */
