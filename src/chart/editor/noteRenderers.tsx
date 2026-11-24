@@ -620,6 +620,7 @@ export const HoverPreview = React.memo(function HoverPreview({
   offsetX,
   isSilent = false,
   isLongNote = false,
+  snapped = false,
 }: {
   beat: number;
   column: string;
@@ -628,6 +629,8 @@ export const HoverPreview = React.memo(function HoverPreview({
   offsetX: number;
   isSilent?: boolean;
   isLongNote?: boolean;
+  /** Beat is locked to a grid line — draws the lock line */
+  snapped?: boolean;
 }) {
   const noteHeight = useNoteHeight();
   const lane = lanes.find((l) => l.id === column);
@@ -651,6 +654,7 @@ export const HoverPreview = React.memo(function HoverPreview({
           <edgesGeometry args={[silentEdgeGeom]} />
           <lineBasicMaterial color="#aaaaaa" transparent opacity={0.6} />
         </lineSegments>
+        {snapped && <SnapLockLine x={0} y={-noteHeight / 2} width={lane.width} />}
       </group>
     );
   }
@@ -673,17 +677,37 @@ export const HoverPreview = React.memo(function HoverPreview({
           <planeGeometry args={[w, noteHeight]} />
           <meshBasicMaterial color={lane.color} transparent opacity={0.5} />
         </mesh>
+        {snapped && <SnapLockLine x={x} y={beat * beatScale} width={lane.width} />}
       </group>
     );
   }
 
   return (
-    <mesh position={[x, y, 2]}>
-      <planeGeometry args={[w, noteHeight]} />
-      <meshBasicMaterial color={lane.color} transparent opacity={0.5} />
-    </mesh>
+    <group>
+      <mesh position={[x, y, 2]}>
+        <planeGeometry args={[w, noteHeight]} />
+        <meshBasicMaterial color={lane.color} transparent opacity={0.6} />
+      </mesh>
+      {snapped && <SnapLockLine x={x} y={beat * beatScale} width={lane.width} />}
+    </group>
   );
 });
+
+/**
+ * Bright line on the grid line the hover preview is locked to, so it is
+ * obvious which line a click will place on (and that snapping is active).
+ */
+function SnapLockLine({ x, y, width }: { x: number; y: number; width: number }) {
+  // Scales with the note thickness (like the notes and grab zones). A fixed
+  // 1-unit line fell below a pixel and faded out at some positions.
+  const thickness = Math.max(1.5, useNoteHeight() * 0.4);
+  return (
+    <mesh position={[x, y, 2.5]}>
+      <planeGeometry args={[width, thickness]} />
+      <meshBasicMaterial color="#ffffff" depthWrite={false} />
+    </mesh>
+  );
+}
 
 /** Rubber band selection rectangle */
 export const RubberBandRect = React.memo(function RubberBandRect({

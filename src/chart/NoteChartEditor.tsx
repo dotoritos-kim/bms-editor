@@ -177,7 +177,7 @@ function EditorCanvas({
   );
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
-  const [hoverPosition, setHoverPosition] = useState<{ beat: number; column: string } | null>(null);
+  const [hoverPosition, setHoverPosition] = useState<{ beat: number; column: string; snapped: boolean } | null>(null);
   const [resizing, setResizing] = useState<{ noteId: string; startEndBeat: number } | null>(null);
   const [rubberBand, setRubberBand] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null);
   const [dragDelta, setDragDelta] = useState<{ beatDelta: number; columnDelta: number } | null>(null);
@@ -404,12 +404,29 @@ function EditorCanvas({
   const lastPointerClientRef = useRef({ x: -1, y: -1 });
 
   const shiftHeldRef = useRef(false);
+  // Re-evaluates the hover preview at the last pointer position; set below once
+  // worldToLaneBeat exists. Lets a Shift press/release update the preview (and
+  // its snap lock line) without moving the mouse.
+  const refreshHoverRef = useRef<() => void>(() => {});
   useEffect(() => {
-    const down = (e: KeyboardEvent) => { if (e.key === 'Shift') shiftHeldRef.current = true; };
-    const up = (e: KeyboardEvent) => { if (e.key === 'Shift') shiftHeldRef.current = false; };
+    const setShift = (held: boolean) => {
+      if (shiftHeldRef.current === held) return;
+      shiftHeldRef.current = held;
+      refreshHoverRef.current();
+    };
+    const down = (e: KeyboardEvent) => { if (e.key === 'Shift') setShift(true); };
+    const up = (e: KeyboardEvent) => { if (e.key === 'Shift') setShift(false); };
+    // A Shift released while the window is unfocused (Alt+Tab, dialogs) never
+    // fires keyup here, which left snapping silently off until Shift was tapped.
+    const blur = () => setShift(false);
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
-    return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); };
+    window.addEventListener('blur', blur);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('blur', blur);
+    };
   }, []);
 
   const worldToLaneBeat = useCallback(
@@ -428,6 +445,16 @@ function EditorCanvas({
     },
     [lanes, offsetX, beatScale, gridSnap, snapEnabled, timeSignatures, gridSnapOverrides]
   );
+
+  const lastHoverWorldRef = useRef<{ x: number; y: number } | null>(null);
+  refreshHoverRef.current = () => {
+    const world = lastHoverWorldRef.current;
+    if (!world) return;
+    const { column, beat } = worldToLaneBeat(world.x, world.y);
+    setHoverPosition(column && beat >= 0
+      ? { beat, column, snapped: snapEnabled && !shiftHeldRef.current }
+      : null);
+  };
 
   useEffect(() => {
     if (coordConverterRef) {
@@ -676,6 +703,8 @@ function EditorCanvas({
   const handlePointerMove = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
       const { clientX, clientY } = e.nativeEvent;
+      // The pointer event knows the real Shift state; trust it over key tracking
+      shiftHeldRef.current = e.nativeEvent.shiftKey;
       const pointerActuallyMoved =
         clientX !== lastPointerClientRef.current.x || clientY !== lastPointerClientRef.current.y;
       lastPointerClientRef.current = { x: clientX, y: clientY };
@@ -683,7 +712,8 @@ function EditorCanvas({
       const world = screenToWorld(clientX, clientY);
       const { column, beat } = worldToLaneBeat(world.x, world.y);
 
-      if (column && beat >= 0) setHoverPosition({ beat, column });
+      lastHoverWorldRef.current = { x: world.x, y: world.y };
+      if (column && beat >= 0) setHoverPosition({ beat, column, snapped: snapEnabled && !shiftHeldRef.current });
       else setHoverPosition(null);
 
       const idle = !isDragging && !rubberBand && !resizing && !lnDragCreate;
@@ -748,12 +778,13 @@ function EditorCanvas({
         setSnapGuideBeat(null);
       }
     },
-    [screenToWorld, worldToLaneBeat, isDragging, dragStart, rubberBand, activeTool, lanes, offsetX, resizing, notes, sortedNotes, beatScale, gridSnap, totalHeight, onNoteHover, findNoteAtPosition, pressTargetAt, resizeEndBeat, gl.domElement, lnDragCreate, constrainDragPoint]
+    [screenToWorld, worldToLaneBeat, isDragging, dragStart, rubberBand, activeTool, lanes, offsetX, resizing, notes, sortedNotes, beatScale, gridSnap, totalHeight, onNoteHover, findNoteAtPosition, pressTargetAt, resizeEndBeat, gl.domElement, lnDragCreate, constrainDragPoint, snapEnabled]
   );
 
   const handlePointerDown = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
       e.stopPropagation();
+      shiftHeldRef.current = e.nativeEvent.shiftKey;
       pointerUpProcessedRef.current = false;
       const world = screenToWorld(e.nativeEvent.clientX, e.nativeEvent.clientY);
       const { column, beat } = worldToLaneBeat(world.x, world.y);
@@ -917,6 +948,7 @@ function EditorCanvas({
   const handlePointerUp = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
       e.stopPropagation();
+      shiftHeldRef.current = e.nativeEvent.shiftKey;
       if (pointerUpProcessedRef.current) return;
       pointerUpProcessedRef.current = true;
 
@@ -1042,7 +1074,7 @@ function EditorCanvas({
       <MeasureLinesRenderer totalBeats={totalBeats} beatScale={beatScale} totalWidth={totalWidth} gridSnap={gridSnap} scrollBeat={scrollBeat} viewportBeats={viewportBeats} timeSignatures={timeSignatures} gridSnapOverrides={gridSnapOverrides} />
       <NotesRenderer notes={notes} lanes={lanes} beatScale={beatScale} selectedNotes={selectedNotes} offsetX={offsetX} scrollBeat={scrollBeat} viewportBeats={viewportBeats} scrollBeatImperativeRef={scrollBeatImperativeRef} layerConfig={layerConfig} highlightKeysound={highlightKeysound} customColors={customColors} />
       {activeTool === 'addNote' && !lnDragCreate && hoverPosition && (
-        <HoverPreview beat={hoverPosition.beat} column={hoverPosition.column} lanes={lanes} beatScale={beatScale} offsetX={offsetX} isSilent={currentKeysound === '00'} isLongNote={selectedNoteType === 'longNote'} />
+        <HoverPreview beat={hoverPosition.beat} column={hoverPosition.column} lanes={lanes} beatScale={beatScale} offsetX={offsetX} isSilent={currentKeysound === '00'} isLongNote={selectedNoteType === 'longNote'} snapped={hoverPosition.snapped} />
       )}
       {/* Stop/BPM tool hover line preview */}
       {(activeTool === 'stop' || activeTool === 'bpm') && hoverPosition && (
